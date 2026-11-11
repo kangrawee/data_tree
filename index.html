@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TreePlotter TH - ระบบสำรวจและประเมินสุขภาพต้นไม้ภาคสนาม</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    
+    <!-- Google Fonts (Prompt) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                    },
+                    colors: {
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46',
+                            900: '#064e3b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        html, body {
+            height: 100%;
+            width: 100vw;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Prompt', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* Pulsing GPS Location Marker */
+        .gps-pulse {
+            width: 18px;
+            height: 18px;
+            background-color: #3b82f6;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 0 rgba(59, 130, 246, 0.6);
+            animation: pulse-animation 2s infinite;
+        }
+
+        @keyframes pulse-animation {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+
+        /* Map Pin Marker Styling */
+        .tree-marker-pin {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            color: white;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            border: 2px solid white;
+            transition: transform 0.2s ease;
+        }
+
+        .tree-marker-pin:hover {
+            transform: scale(1.2);
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #10b981;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen w-screen overflow-hidden text-gray-800">
+
+    <!-- TOP NAVBAR -->
+    <header class="bg-emerald-800 text-white shadow-lg z-30 flex items-center justify-between px-4 py-3 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-emerald-600 p-2 rounded-lg flex items-center justify-center text-xl shadow">
+                <i class="fa-solid fa-tree text-white"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight tracking-wide">TreePlotter <span class="text-xs bg-emerald-600 text-emerald-100 px-2 py-0.5 rounded-full font-normal">UTM & GBH</span></h1>
+                <p class="text-xs text-emerald-200 hidden sm:block">ระบบสำรวจ คำนวณ GBH/DBH พิกัด UTM และประเมินความเสี่ยงต้นไม้</p>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            <button id="toggle-sidebar-btn" onclick="toggleSidebar()" class="bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-900 text-white px-3 py-2 rounded-lg flex items-center space-x-2 text-sm font-medium transition shadow">
+                <i class="fa-solid fa-list-check"></i>
+                <span class="hidden md:inline">รายการสำรวจ</span>
+                <span id="badge-total-count" class="bg-emerald-900 text-emerald-200 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+            </button>
+            <button onclick="openExportModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg flex items-center space-x-2 text-sm font-medium transition shadow">
+                <i class="fa-solid fa-file-export"></i>
+                <span class="hidden md:inline">ส่งออกข้อมูล</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <div class="relative flex-1 w-full h-full overflow-hidden flex">
+        
+        <!-- MAP CANVAS -->
+        <div id="map" class="w-full h-full"></div>
+
+        <!-- FLOATING MAP CONTROLS -->
+        <div class="absolute top-4 right-4 z-20 flex flex-col space-y-2">
+            <!-- GPS Location Button -->
+            <button onclick="locateUser()" title="ตำแหน่ง GPS ของฉัน" class="w-11 h-11 bg-white hover:bg-gray-50 text-gray-700 active:text-emerald-600 rounded-xl shadow-lg flex items-center justify-center transition border border-gray-200">
+                <i class="fa-solid fa-crosshairs text-lg"></i>
+            </button>
+            <!-- Map Layer Switcher Button -->
+            <button onclick="toggleMapTile()" id="tile-toggle-btn" title="สลับแผนที่ดาวเทียม / ถนน" class="w-11 h-11 bg-white hover:bg-gray-50 text-gray-700 active:text-emerald-600 rounded-xl shadow-lg flex items-center justify-center transition border border-gray-200">
+                <i class="fa-solid fa-earth-asia text-lg"></i>
+            </button>
+        </div>
+
+        <!-- FLOATING INSTRUCTION BANNER -->
+        <div id="map-instruction" class="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-emerald-900/90 text-white px-4 py-2 rounded-full shadow-lg text-xs sm:text-sm font-medium flex items-center space-x-2 backdrop-blur-sm border border-emerald-500/30 transition-all duration-300">
+            <span class="animate-pulse text-amber-400"><i class="fa-solid fa-hand-pointer"></i></span>
+            <span>แตะหรือคลิกที่ทรงพุ่มเพื่อเริ่มประเมินต้นไม้</span>
+        </div>
+
+        <!-- SIDEBAR DRAWER -->
+        <aside id="sidebar" class="absolute right-0 top-0 bottom-0 w-full sm:w-96 bg-white z-20 shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200">
+            
+            <!-- Sidebar Header -->
+            <div class="p-4 bg-emerald-800 text-white flex items-center justify-between shrink-0">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-chart-pie text-emerald-300"></i>
+                    <h2 class="font-bold text-base">สรุปผลการสำรวจต้นไม้</h2>
+                </div>
+                <button onclick="toggleSidebar()" class="text-emerald-200 hover:text-white p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Summary Dashboard Card -->
+            <div class="p-4 bg-emerald-50 border-b border-emerald-100 shrink-0">
+                <div class="text-xs font-semibold text-emerald-800 mb-2 uppercase tracking-wider">ระดับความเสี่ยง (Hazard Risk)</div>
+                <div class="grid grid-cols-4 gap-2 text-center">
+                    <div class="bg-white p-2 rounded-lg border border-emerald-100 shadow-sm">
+                        <div id="stat-total" class="font-bold text-lg text-gray-800">0</div>
+                        <div class="text-[10px] text-gray-500">ทั้งหมด</div>
+                    </div>
+                    <div class="bg-emerald-100/60 p-2 rounded-lg border border-emerald-200 shadow-sm">
+                        <div id="stat-low" class="font-bold text-lg text-emerald-600">0</div>
+                        <div class="text-[10px] text-emerald-700">เสี่ยงต่ำ (0-1)</div>
+                    </div>
+                    <div class="bg-amber-100/60 p-2 rounded-lg border border-amber-200 shadow-sm">
+                        <div id="stat-mod" class="font-bold text-lg text-amber-600">0</div>
+                        <div class="text-[10px] text-amber-700">ปานกลาง (2)</div>
+                    </div>
+                    <div class="bg-red-100/60 p-2 rounded-lg border border-red-200 shadow-sm">
+                        <div id="stat-high" class="font-bold text-lg text-red-600">0</div>
+                        <div class="text-[10px] text-red-700">เสี่ยงสูง (3-4)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Filters -->
+            <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center space-x-2 shrink-0">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                    <input type="text" id="search-input" oninput="renderTreeList()" placeholder="ค้นหาชื่อ หรือแนวทางการแก้ไข..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <select id="filter-risk" onchange="renderTreeList()" class="text-xs py-1.5 px-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option value="all">ทุกระดับเสี่ยง</option>
+                    <option value="low">เสี่ยงต่ำ (0-1)</option>
+                    <option value="mod">ปานกลาง (2)</option>
+                    <option value="high">เสี่ยงสูง (3-4)</option>
+                </select>
+            </div>
+
+            <!-- Tree List -->
+            <div id="tree-list-container" class="flex-1 overflow-y-auto p-3 space-y-2 divide-y divide-gray-100">
+                <!-- Dynamically populated via JavaScript -->
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="p-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs shrink-0">
+                <button onclick="promptClearAll()" class="text-red-500 hover:text-red-700 font-medium flex items-center space-x-1">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>ลบทั้งหมด</span>
+                </button>
+                <span class="text-gray-400 text-[10px]">ระบบบันทึกพิกัด UTM อัตโนมัติ</span>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- TREE EVALUATION MODAL -->
+    <div id="tree-modal" class="fixed inset-0 bg-black/60 z-40 hidden flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden my-auto transform transition-all">
+            
+            <!-- Modal Header -->
+            <div class="bg-emerald-800 text-white px-5 py-3.5 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-clipboard-check text-emerald-300 text-lg"></i>
+                    <h3 id="modal-title" class="font-bold text-base">แบบฟอร์มประเมินและรวบรวมข้อมูลต้นไม้</h3>
+                </div>
+                <button onclick="closeTreeModal()" class="text-emerald-200 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Form -->
+            <form id="tree-form" onsubmit="handleFormSubmit(event)" class="p-5 space-y-4 max-h-[82vh] overflow-y-auto text-xs sm:text-sm">
+                
+                <input type="hidden" id="tree-id">
+                <input type="hidden" id="tree-lat">
+                <input type="hidden" id="tree-lng">
+
+                <!-- Location Info Card (Lat/Lng + UTM Zone/Easting/Northing) -->
+                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-1 text-xs text-emerald-900">
+                    <div class="flex items-center justify-between font-mono">
+                        <span class="text-emerald-700 font-semibold"><i class="fa-solid fa-location-dot mr-1"></i>Lat/Lng:</span>
+                        <span id="display-coords">0.000000, 0.000000</span>
+                    </div>
+                    <div class="flex items-center justify-between font-mono pt-1 border-t border-emerald-200/60">
+                        <span class="text-emerald-700 font-semibold"><i class="fa-solid fa-compass mr-1"></i>UTM Coordinates:</span>
+                        <span id="display-utm" class="font-bold text-emerald-800">Zone 47N | E: 0 | N: 0</span>
+                    </div>
+                </div>
+
+                <!-- Tree Name / Species -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1">ชื่อพันธุ์ไม้ / ชื่อต้นไม้ <span class="text-red-500">*</span></label>
+                    <input type="text" id="tree-name" required placeholder="เช่น ประดู่, นนทรี, จามจุรี, ตะเคียนทอง" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                    <div class="flex flex-wrap gap-1 mt-1.5">
+                        <span class="text-[10px] text-gray-400 self-center mr-1">เลือกด่วน:</span>
+                        <button type="button" onclick="setQuickName('ประดู่')" class="text-[10px] bg-gray-100 hover:bg-emerald-100 text-gray-600 hover:text-emerald-800 px-2 py-0.5 rounded transition">ประดู่</button>
+                        <button type="button" onclick="setQuickName('นนทรี')" class="text-[10px] bg-gray-100 hover:bg-emerald-100 text-gray-600 hover:text-emerald-800 px-2 py-0.5 rounded transition">นนทรี</button>
+                        <button type="button" onclick="setQuickName('จามจุรี')" class="text-[10px] bg-gray-100 hover:bg-emerald-100 text-gray-600 hover:text-emerald-800 px-2 py-0.5 rounded transition">จามจุรี</button>
+                        <button type="button" onclick="setQuickName('ราชพฤกษ์')" class="text-[10px] bg-gray-100 hover:bg-emerald-100 text-gray-600 hover:text-emerald-800 px-2 py-0.5 rounded transition">ราชพฤกษ์</button>
+                    </div>
+                </div>
+
+                <!-- GBH -> DBH Calculation Block -->
+                <div class="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2">
+                    <label class="block font-semibold text-gray-700">การวัดขนาดความโตและความสูงต้นไม้</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- GBH Input -->
+                        <div>
+                            <span class="text-[11px] text-gray-600 block mb-1">1. GBH (เส้นรอบวงอก) <span class="text-red-500">*</span></span>
+                            <div class="relative">
+                                <input type="number" step="0.1" id="tree-gbh" required oninput="calculateDBH()" placeholder="0.0" class="w-full pl-3 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
+                                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">ซม.</span>
+                            </div>
+                        </div>
+                        <!-- Calculated DBH Output -->
+                        <div>
+                            <span class="text-[11px] text-gray-600 block mb-1">2. DBH (คำนวณอัตโนมัติ)</span>
+                            <div class="bg-emerald-100/70 border border-emerald-300 rounded-lg px-3 py-2 flex items-center justify-between">
+                                <span id="tree-dbh-display" class="font-mono font-bold text-emerald-800 text-base">0.00</span>
+                                <span class="text-xs text-emerald-700 font-semibold">ซม.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Height Input -->
+                    <div class="pt-1">
+                        <span class="text-[11px] text-gray-600 block mb-1">3. ความสูงประเมิน (Height)</span>
+                        <div class="relative">
+                            <input type="number" step="0.1" id="tree-height" placeholder="0.0" class="w-full pl-3 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
+                            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">เมตร</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EVALUATION CATEGORY 1: OVERALL HEALTH (0 - 4) -->
+                <div>
+                    <label class="block font-semibold text-gray-800 mb-1">1. สุขภาพโดยรวมของต้นไม้ (Overall Tree Health Score)</label>
+                    <select id="tree-health-score" class="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
+                        <option value="0">0 = ปกติ / สมบูรณ์ดีเยี่ยม</option>
+                        <option value="1">1 = มีร่องรอยโรคหรือแมลงเล็กน้อย</option>
+                        <option value="2">2 = ทรงพุ่มหรือลำต้นเริ่มทรุดโทรม</option>
+                        <option value="3">3 = เสื่อมโทรมหนัก / มีโพรงกิ่งแห้งจำนวนมาก</option>
+                        <option value="4">4 = ทรุดโทรมขั้นวิกฤต / ยืนต้นตาย</option>
+                    </select>
+                </div>
+
+                <!-- EVALUATION CATEGORY 2: HAZARD RISK RATING (0 - 4) -->
+                <div>
+                    <label class="block font-semibold text-gray-800 mb-1">2. ความเสี่ยงที่จะเกิดอันตราย (Hazard Risk Rating)</label>
+                    <select id="tree-risk-score" class="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
+                        <option value="0">0 = ไม่มีความเสี่ยง (ปกติ)</option>
+                        <option value="1">1 = ความเสี่ยงต่ำ</option>
+                        <option value="2">2 = ความเสี่ยงปานกลาง</option>
+                        <option value="3">3 = ความเสี่ยงสูง</option>
+                        <option value="4">4 = เสี่ยงสูงมาก / อันตรายขั้นวิกฤต</option>
+                    </select>
+                </div>
+
+                <!-- MITIGATION ACTION -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1">3. แนวทางการแก้ไข / ข้อเสนอแนะการบำรุงรักษา</label>
+                    <textarea id="tree-action" rows="2" placeholder="กรอกแนวทางการแก้ไข เช่น ตัดแต่งกิ่งแห้ง/กิ่งเสี่ยง, ฉีดพ่นยากำจัดศัตรูพืช, ทำแผลลำต้น, ติดตั้งระบบค้ำยัน..." class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+                </div>
+
+                <!-- Camera / Photo Upload -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1">รูปถ่ายประกอบการสำรวจ</label>
+                    <div class="flex items-center space-x-3">
+                        <label class="flex-1 flex items-center justify-center border-2 border-dashed border-gray-300 hover:border-emerald-500 bg-gray-50 hover:bg-emerald-50/30 p-2.5 rounded-xl cursor-pointer transition">
+                            <div class="text-center">
+                                <i class="fa-solid fa-camera text-gray-400 text-lg mb-1"></i>
+                                <div class="text-xs text-gray-600 font-medium">ถ่ายรูป / แนบไฟล์ภาพ</div>
+                            </div>
+                            <input type="file" id="tree-photo-input" accept="image/*" capture="environment" onchange="previewImage(event)" class="hidden">
+                        </label>
+                        <!-- Preview -->
+                        <div id="photo-preview-container" class="relative hidden w-20 h-20 rounded-xl border border-gray-200 overflow-hidden shrink-0 bg-gray-100">
+                            <img id="photo-preview" src="" class="w-full h-full object-cover">
+                            <button type="button" onclick="removePhoto()" class="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px]">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Notes -->
+                <div>
+                    <label class="block font-semibold text-gray-700 mb-1">หมายเหตุเพิ่มเติม</label>
+                    <input type="text" id="tree-notes" placeholder="ระบุข้อมูลเพิ่มเติม (ถ้ามี)" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
+                    <button type="button" onclick="closeTreeModal()" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition">ยกเลิก</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-md transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>บันทึกข้อมูล</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- EXPORT MODAL -->
+    <div id="export-modal" class="fixed inset-0 bg-black/60 z-40 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <div class="bg-emerald-800 text-white px-5 py-4 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-file-export text-emerald-300"></i>
+                    <h3 class="font-bold text-base">ส่งออกข้อมูลต้นไม้</h3>
+                </div>
+                <button onclick="closeExportModal()" class="text-emerald-200 hover:text-white">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-3">
+                <p class="text-xs text-gray-600 mb-2">ไฟล์ส่งออกจะบรรจุข้อมูลพิกัด UTM, GBH, DBH, คะแนนสุขภาพ และแนวทางการแก้ไขครบถ้วน:</p>
+                
+                <!-- GeoJSON -->
+                <button onclick="exportGeoJSON()" class="w-full p-3 border border-gray-200 hover:border-emerald-500 rounded-xl flex items-center justify-between group hover:bg-emerald-50/50 transition">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center font-bold text-xs">GIS</div>
+                        <div class="text-left">
+                            <div class="font-semibold text-sm text-gray-800 group-hover:text-emerald-700">GeoJSON (.geojson)</div>
+                            <div class="text-[11px] text-gray-500">สำหรับ QGIS, ArcGIS, Google Earth Engine</div>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-download text-gray-400 group-hover:text-emerald-600"></i>
+                </button>
+
+                <!-- CSV -->
+                <button onclick="exportCSV()" class="w-full p-3 border border-gray-200 hover:border-emerald-500 rounded-xl flex items-center justify-between group hover:bg-emerald-50/50 transition">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-blue-100 text-blue-700 rounded-lg flex items-center justify-center font-bold text-xs">CSV</div>
+                        <div class="text-left">
+                            <div class="font-semibold text-sm text-gray-800 group-hover:text-emerald-700">CSV Excel (.csv)</div>
+                            <div class="text-[11px] text-gray-500">สำหรับเปิดและวิเคราะห์ใน Microsoft Excel</div>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-download text-gray-400 group-hover:text-emerald-600"></i>
+                </button>
+
+                <!-- KML -->
+                <button onclick="exportKML()" class="w-full p-3 border border-gray-200 hover:border-emerald-500 rounded-xl flex items-center justify-between group hover:bg-emerald-50/50 transition">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center font-bold text-xs">KML</div>
+                        <div class="text-left">
+                            <div class="font-semibold text-sm text-gray-800 group-hover:text-emerald-700">Google Earth (.kml)</div>
+                            <div class="text-[11px] text-gray-500">สำหรับเปิดดูตำแหน่งบน Google Earth 3D</div>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-download text-gray-400 group-hover:text-emerald-600"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CUSTOM CONFIRMATION MODAL -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-5 text-center">
+            <div id="confirm-icon" class="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h4 id="confirm-title" class="font-bold text-base text-gray-800 mb-1">ยืนยันการทำรายการ</h4>
+            <p id="confirm-msg" class="text-xs text-gray-600 mb-5">คุณแน่ใจหรือไม่ว่าต้องการดำเนินการนี้?</p>
+            <div class="flex space-x-2">
+                <button id="confirm-cancel-btn" class="flex-1 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">ยกเลิก</button>
+                <button id="confirm-ok-btn" class="flex-1 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition shadow">ตกลง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION BANNER -->
+    <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-medium flex items-center space-x-2 transition-all duration-300 opacity-0 pointer-events-none transform translate-y-4">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-msg">ข้อความแจ้งเตือน</span>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // GLOBAL APP STATE
+        const STORAGE_KEY = 'treeplotter_th_v2';
+        let map;
+        let isSatellite = true;
+        let trees = [];
+        let markersGroup;
+        let userLocationMarker = null;
+        let currentPhotoBase64 = "";
+
+        // Map Tile Layers
+        const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri'
+        });
+
+        const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        });
+
+        // Initialize Map & Load Saved Data
+        window.onload = function() {
+            initMap();
+            loadTreesFromStorage();
+            renderTreeMarkers();
+            renderTreeList();
+            updateStats();
+        };
+
+        // Initialize Leaflet Map
+        function initMap() {
+            map = L.map('map', {
+                center: [13.7563, 100.5018], // Default: Bangkok
+                zoom: 17,
+                zoomControl: false,
+                layers: [esriSatellite]
+            });
+
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            markersGroup = L.layerGroup().addTo(map);
+
+            // Handle Map Click to Create New Marker
+            map.on('click', function(e) {
+                openTreeModalForCreate(e.latlng.lat, e.latlng.lng);
+            });
+        }
+
+        // Toggle Base Map Layer
+        function toggleMapTile() {
+            if (isSatellite) {
+                map.removeLayer(esriSatellite);
+                map.addLayer(openStreetMap);
+                document.getElementById('tile-toggle-btn').classList.add('text-emerald-600', 'bg-emerald-50');
+                showToast('เปลี่ยนเป็นแผนที่ถนน (OpenStreetMap)');
+            } else {
+                map.removeLayer(openStreetMap);
+                map.addLayer(esriSatellite);
+                document.getElementById('tile-toggle-btn').classList.remove('text-emerald-600', 'bg-emerald-50');
+                showToast('เปลี่ยนเป็นภาพถ่ายดาวเทียม (Esri)');
+            }
+            isSatellite = !isSatellite;
+        }
+
+        // Geolocation GPS
+        function locateUser() {
+            if (!navigator.geolocation) {
+                showToast('อุปกรณ์ของคุณไม่รองรับการระบุพิกัด GPS', 'error');
+                return;
+            }
+
+            showToast('กำลังค้นหาพิกัด GPS ของคุณ...');
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+
+                    map.flyTo([lat, lng], 19, { animate: true, duration: 1.5 });
+
+                    if (userLocationMarker) map.removeLayer(userLocationMarker);
+
+                    const gpsIcon = L.divIcon({
+                        className: 'gps-pulse-container',
+                        html: '<div class="gps-pulse"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+
+                    userLocationMarker = L.marker([lat, lng], { icon: gpsIcon }).addTo(map);
+                    showToast('ระบุตำแหน่งปัจจุบันสำเร็จ');
+                },
+                function() {
+                    showToast('ไม่สามารถดึงพิกัด GPS ได้ โปรดเปิดสิทธิ์ระบุตำแหน่ง', 'error');
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // CONVERT WGS84 (Lat, Lng) to UTM (Universal Transverse Mercator)
+        function latLngToUTM(lat, lng) {
+            if (isNaN(lat) || isNaN(lng)) return { zone: '', easting: 0, northing: 0, formatted: '' };
+
+            const a = 6378137.0; // WGS84 semi-major axis
+            const f = 1 / 298.257223563; // WGS84 flattening
+            const b = a * (1 - f);
+            const e = Math.sqrt((a * a - b * b) / (a * a));
+            const e2 = (a * a - b * b) / (b * b);
+
+            let zone = Math.floor((lng + 180) / 6) + 1;
+            const latRad = lat * Math.PI / 180;
+            const lngRad = lng * Math.PI / 180;
+            const centralMeridian = (zone - 1) * 6 - 180 + 3;
+            const centralMeridianRad = centralMeridian * Math.PI / 180;
+
+            const N0 = lat < 0 ? 10000000.0 : 0.0;
+            const E0 = 500000.0;
+            const k0 = 0.9996;
+
+            const n = (a - b) / (a + b);
+            const A = a * (1 - n + (5 / 4) * (n * n - Math.pow(n, 3)) + (81 / 64) * (Math.pow(n, 4) - Math.pow(n, 5)));
+            const B = (3 * a * n / 2) * (1 - n + (7 / 8) * (n * n - Math.pow(n, 3)) + (55 / 64) * Math.pow(n, 4));
+            const C = (15 * a * n * n / 16) * (1 - n + (3 / 4) * (n * n - Math.pow(n, 3)));
+            const D = (35 * Math.pow(n, 3) * a / 48) * (1 - n + (11 / 16) * n * n);
+            const E = (315 * a * Math.pow(n, 4) / 512) * (1 - n);
+
+            const sRad = A * latRad - B * Math.sin(2 * latRad) + C * Math.sin(4 * latRad) - D * Math.sin(6 * latRad) + E * Math.sin(8 * latRad);
+            const v = a / Math.sqrt(1 - e * e * Math.sin(latRad) * Math.sin(latRad));
+            const h2 = e2 * Math.cos(latRad) * Math.cos(latRad);
+            const pRad = lngRad - centralMeridianRad;
+
+            const term1 = v * Math.cos(latRad) * pRad;
+            const term2 = (v / 6) * Math.pow(Math.cos(latRad), 3) * (1 - Math.tan(latRad) * Math.tan(latRad) + h2) * Math.pow(pRad, 3);
+            const term3 = (v / 120) * Math.pow(Math.cos(latRad), 5) * (5 - 18 * Math.tan(latRad) * Math.tan(latRad) + Math.pow(Math.tan(latRad), 4) + 14 * h2 - 58 * Math.tan(latRad) * Math.tan(latRad) * h2) * Math.pow(pRad, 5);
+            const easting = E0 + k0 * (term1 + term2 + term3);
+
+            const nterm1 = (v / 2) * Math.sin(latRad) * Math.cos(latRad) * Math.pow(pRad, 2);
+            const nterm2 = (v / 24) * Math.sin(latRad) * Math.pow(Math.cos(latRad), 3) * (5 - Math.tan(latRad) * Math.tan(latRad) + 9 * h2 + 4 * h2 * h2) * Math.pow(pRad, 4);
+            const nterm3 = (v / 720) * Math.sin(latRad) * Math.pow(Math.cos(latRad), 5) * (61 - 58 * Math.tan(latRad) * Math.tan(latRad) + Math.pow(Math.tan(latRad), 4) + 270 * h2 - 330 * Math.tan(latRad) * Math.tan(latRad) * h2) * Math.pow(pRad, 6);
+            const northing = N0 + k0 * (sRad + nterm1 + nterm2 + nterm3);
+
+            const zoneLetter = lat >= 0 ? 'N' : 'S';
+            const eastingRounded = Math.round(easting);
+            const northingRounded = Math.round(northing);
+
+            return {
+                zone: `${zone}${zoneLetter}`,
+                easting: eastingRounded,
+                northing: northingRounded,
+                formatted: `Zone ${zone}${zoneLetter} | E: ${eastingRounded.toLocaleString()} | N: ${northingRounded.toLocaleString()}`
+            };
+        }
+
+        // Real-Time GBH to DBH Calculation
+        function calculateDBH() {
+            const gbhVal = parseFloat(document.getElementById('tree-gbh').value);
+            if (!isNaN(gbhVal) && gbhVal > 0) {
+                const dbh = gbhVal / Math.PI;
+                document.getElementById('tree-dbh-display').innerText = dbh.toFixed(2);
+            } else {
+                document.getElementById('tree-dbh-display').innerText = "0.00";
+            }
+        }
+
+        // Render Tree Markers on Map
+        function renderTreeMarkers() {
+            markersGroup.clearLayers();
+
+            trees.forEach(tree => {
+                const markerColor = getRiskColorHex(tree.riskScore);
+                const markerIcon = L.divIcon({
+                    className: 'custom-tree-pin',
+                    html: `
+                        <div class="tree-marker-pin" style="background-color: ${markerColor}; width: 32px; height: 32px;">
+                            <i class="fa-solid fa-tree text-xs"></i>
+                        </div>
+                    `,
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                });
+
+                const marker = L.marker([tree.lat, tree.lng], { icon: markerIcon });
+                const utm = latLngToUTM(tree.lat, tree.lng);
+
+                const popupHTML = `
+                    <div class="p-2 min-w-[220px] max-w-[260px]">
+                        ${tree.photo ? `<img src="${tree.photo}" class="w-full h-28 object-cover rounded-lg mb-2 shadow-sm">` : ''}
+                        <div class="flex items-center justify-between mb-1">
+                            <strong class="text-sm font-bold text-gray-800">${escapeHtml(tree.name)}</strong>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold text-white" style="background-color: ${markerColor}">
+                                Risk: ${tree.riskScore}/4
+                            </span>
+                        </div>
+                        
+                        <div class="text-[11px] bg-gray-50 p-2 rounded-lg border text-gray-700 space-y-1 mb-2 font-mono">
+                            <div><b>UTM:</b> ${utm.formatted}</div>
+                            <div><b>GBH:</b> ${tree.gbh} cm | <b>DBH:</b> ${tree.dbh} cm</div>
+                            <div><b>ความสูง:</b> ${tree.height ? tree.height + ' m' : '-'}</div>
+                        </div>
+
+                        <div class="text-xs text-gray-600 space-y-1 mb-2">
+                            <div><b>สุขภาพ:</b> ${getHealthScoreDesc(tree.healthScore)}</div>
+                            <div><b>ความเสี่ยง:</b> ${getRiskScoreDesc(tree.riskScore)}</div>
+                            ${tree.action ? `<div class="bg-amber-50 p-1.5 rounded text-amber-900 border border-amber-200"><b>แนวทางแก้ไข:</b> ${escapeHtml(tree.action)}</div>` : ''}
+                        </div>
+
+                        <div class="flex space-x-1 border-t pt-2">
+                            <button onclick="openTreeModalForEdit('${tree.id}')" class="flex-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs py-1 rounded font-medium">แก้ไข</button>
+                            <button onclick="promptDeleteTree('${tree.id}')" class="bg-red-100 hover:bg-red-200 text-red-700 text-xs px-2 py-1 rounded"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+                `;
+
+                marker.bindPopup(popupHTML);
+                markersGroup.addLayer(marker);
+            });
+        }
+
+        // Render Tree List in Sidebar
+        function renderTreeList() {
+            const container = document.getElementById('tree-list-container');
+            const searchVal = document.getElementById('search-input').value.toLowerCase();
+            const filterRisk = document.getElementById('filter-risk').value;
+
+            container.innerHTML = '';
+
+            const filtered = trees.filter(t => {
+                const matchesSearch = t.name.toLowerCase().includes(searchVal) || 
+                                      (t.action && t.action.toLowerCase().includes(searchVal)) ||
+                                      (t.notes && t.notes.toLowerCase().includes(searchVal));
+                
+                let matchesRisk = true;
+                if (filterRisk === 'low') matchesRisk = t.riskScore <= 1;
+                else if (filterRisk === 'mod') matchesRisk = t.riskScore === 2;
+                else if (filterRisk === 'high') matchesRisk = t.riskScore >= 3;
+
+                return matchesSearch && matchesRisk;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <i class="fa-solid fa-tree text-3xl mb-2 opacity-50"></i>
+                        <p class="text-xs">ไม่พบข้อมูลต้นไม้</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(tree => {
+                const badgeColor = getRiskBadgeClass(tree.riskScore);
+                const utm = latLngToUTM(tree.lat, tree.lng);
+                const item = document.createElement('div');
+                item.className = 'p-3 bg-white hover:bg-emerald-50/50 rounded-xl border border-gray-100 shadow-sm transition flex items-center justify-between group cursor-pointer';
+                
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3 flex-1 min-w-0" onclick="zoomToTree('${tree.id}')">
+                        ${tree.photo ? 
+                            `<img src="${tree.photo}" class="w-12 h-12 rounded-lg object-cover shrink-0 border border-gray-200">` : 
+                            `<div class="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0"><i class="fa-solid fa-tree text-lg"></i></div>`
+                        }
+                        <div class="truncate">
+                            <div class="flex items-center space-x-2">
+                                <h4 class="font-bold text-xs text-gray-800 truncate">${escapeHtml(tree.name)}</h4>
+                                <span class="text-[9px] px-1.5 py-0.2 rounded font-bold ${badgeColor}">เสี่ยง: ${tree.riskScore}/4</span>
+                            </div>
+                            <div class="text-[10px] text-gray-500 mt-0.5">
+                                <span>GBH: ${tree.gbh}cm</span> | <span>DBH: ${tree.dbh}cm</span>
+                            </div>
+                            <div class="text-[9px] text-emerald-700 font-mono truncate">
+                                UTM: ${utm.zone} ${utm.easting}E ${utm.northing}N
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-1 shrink-0 ml-2">
+                        <button onclick="openTreeModalForEdit('${tree.id}')" title="แก้ไข" class="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button onclick="promptDeleteTree('${tree.id}')" title="ลบ" class="p-1.5 text-gray-400 hover:text-red-600 rounded-lg">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // Zoom to Specific Tree on Map
+        function zoomToTree(id) {
+            const tree = trees.find(t => t.id === id);
+            if (tree) {
+                map.flyTo([tree.lat, tree.lng], 19, { animate: true, duration: 1.2 });
+                if (window.innerWidth < 640) toggleSidebar();
+            }
+        }
+
+        // Update Dashboard Statistics
+        function updateStats() {
+            const total = trees.length;
+            const low = trees.filter(t => t.riskScore <= 1).length;
+            const mod = trees.filter(t => t.riskScore === 2).length;
+            const high = trees.filter(t => t.riskScore >= 3).length;
+
+            document.getElementById('stat-total').innerText = total;
+            document.getElementById('stat-low').innerText = low;
+            document.getElementById('stat-mod').innerText = mod;
+            document.getElementById('stat-high').innerText = high;
+            document.getElementById('badge-total-count').innerText = total;
+        }
+
+        // Open Modal - Create Mode
+        function openTreeModalForCreate(lat, lng) {
+            document.getElementById('modal-title').innerText = 'บันทึกแบบประเมินต้นไม้';
+            document.getElementById('tree-id').value = '';
+            document.getElementById('tree-lat').value = lat;
+            document.getElementById('tree-lng').value = lng;
+            
+            document.getElementById('display-coords').innerText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            
+            const utm = latLngToUTM(lat, lng);
+            document.getElementById('display-utm').innerText = utm.formatted;
+
+            document.getElementById('tree-form').reset();
+            document.getElementById('tree-dbh-display').innerText = "0.00";
+            currentPhotoBase64 = '';
+            removePhoto();
+
+            document.getElementById('tree-modal').classList.remove('hidden');
+        }
+
+        // Open Modal - Edit Mode
+        function openTreeModalForEdit(id) {
+            const tree = trees.find(t => t.id === id);
+            if (!tree) return;
+
+            document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลแบบประเมินต้นไม้';
+            document.getElementById('tree-id').value = tree.id;
+            document.getElementById('tree-lat').value = tree.lat;
+            document.getElementById('tree-lng').value = tree.lng;
+            
+            document.getElementById('display-coords').innerText = `${tree.lat.toFixed(6)}, ${tree.lng.toFixed(6)}`;
+            const utm = latLngToUTM(tree.lat, tree.lng);
+            document.getElementById('display-utm').innerText = utm.formatted;
+
+            document.getElementById('tree-name').value = tree.name;
+            document.getElementById('tree-gbh').value = tree.gbh || '';
+            document.getElementById('tree-dbh-display').innerText = tree.dbh ? tree.dbh.toFixed(2) : '0.00';
+            document.getElementById('tree-height').value = tree.height || '';
+            document.getElementById('tree-health-score').value = tree.healthScore !== undefined ? tree.healthScore : 0;
+            document.getElementById('tree-risk-score').value = tree.riskScore !== undefined ? tree.riskScore : 0;
+            document.getElementById('tree-action').value = tree.action || '';
+            document.getElementById('tree-notes').value = tree.notes || '';
+
+            if (tree.photo) {
+                currentPhotoBase64 = tree.photo;
+                document.getElementById('photo-preview').src = tree.photo;
+                document.getElementById('photo-preview-container').classList.remove('hidden');
+            } else {
+                currentPhotoBase64 = '';
+                removePhoto();
+            }
+
+            document.getElementById('tree-modal').classList.remove('hidden');
+        }
+
+        function closeTreeModal() {
+            document.getElementById('tree-modal').classList.add('hidden');
+        }
+
+        function setQuickName(name) {
+            document.getElementById('tree-name').value = name;
+        }
+
+        // Save / Submit Form Data
+        function handleFormSubmit(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('tree-id').value || Date.now().toString();
+            const lat = parseFloat(document.getElementById('tree-lat').value);
+            const lng = parseFloat(document.getElementById('tree-lng').value);
+            const name = document.getElementById('tree-name').value.trim();
+            const gbh = parseFloat(document.getElementById('tree-gbh').value);
+            const dbh = parseFloat((gbh / Math.PI).toFixed(2));
+            const height = document.getElementById('tree-height').value ? parseFloat(document.getElementById('tree-height').value) : null;
+            const healthScore = parseInt(document.getElementById('tree-health-score').value, 10);
+            const riskScore = parseInt(document.getElementById('tree-risk-score').value, 10);
+            const action = document.getElementById('tree-action').value.trim();
+            const notes = document.getElementById('tree-notes').value.trim();
+
+            const utm = latLngToUTM(lat, lng);
+
+            const treeRecord = {
+                id,
+                lat,
+                lng,
+                utmZone: utm.zone,
+                utmEasting: utm.easting,
+                utmNorthing: utm.northing,
+                name,
+                gbh,
+                dbh,
+                height,
+                healthScore,
+                riskScore,
+                action,
+                notes,
+                photo: currentPhotoBase64,
+                createdAt: new Date().toISOString()
+            };
+
+            const index = trees.findIndex(t => t.id === id);
+            if (index > -1) {
+                trees[index] = treeRecord;
+                showToast('อัปเดตข้อมูลแบบประเมินเรียบร้อย');
+            } else {
+                trees.push(treeRecord);
+                showToast('บันทึกข้อมูลต้นไม้ต้นใหม่เรียบร้อย');
+            }
+
+            saveTreesToStorage();
+            renderTreeMarkers();
+            renderTreeList();
+            updateStats();
+            closeTreeModal();
+        }
+
+        // Compressed Image Handler
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 800;
+                    let w = img.width;
+                    let h = img.height;
+
+                    if (w > h) {
+                        if (w > MAX) { h *= MAX / w; w = MAX; }
+                    } else {
+                        if (h > MAX) { w *= MAX / h; h = MAX; }
+                    }
+
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+
+                    currentPhotoBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('photo-preview').src = currentPhotoBase64;
+                    document.getElementById('photo-preview-container').classList.remove('hidden');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removePhoto() {
+            currentPhotoBase64 = '';
+            document.getElementById('tree-photo-input').value = '';
+            document.getElementById('photo-preview').src = '';
+            document.getElementById('photo-preview-container').classList.add('hidden');
+        }
+
+        // Delete Confirmation
+        function promptDeleteTree(id) {
+            const tree = trees.find(t => t.id === id);
+            if (!tree) return;
+
+            showConfirmModal(
+                'ลบข้อมูลต้นไม้',
+                `ยืนยันการลบ "${tree.name}" ออกจากระบบ?`,
+                function() {
+                    trees = trees.filter(t => t.id !== id);
+                    saveTreesToStorage();
+                    renderTreeMarkers();
+                    renderTreeList();
+                    updateStats();
+                    showToast('ลบข้อมูลเรียบร้อย');
+                }
+            );
+        }
+
+        function promptClearAll() {
+            if (trees.length === 0) return;
+            showConfirmModal(
+                'ลบข้อมูลทั้งหมด',
+                'คำเตือน: ข้อมูลการสำรวจทั้งหมดจะถูกลบทิ้งอย่างถาวร!',
+                function() {
+                    trees = [];
+                    saveTreesToStorage();
+                    renderTreeMarkers();
+                    renderTreeList();
+                    updateStats();
+                    showToast('ล้างข้อมูลเรียบร้อย');
+                }
+            );
+        }
+
+        // EXPORTS (GeoJSON, CSV, KML)
+        function openExportModal() {
+            if (trees.length === 0) {
+                showToast('ยังไม่มีข้อมูลสำหรับส่งออก', 'error');
+                return;
+            }
+            document.getElementById('export-modal').classList.remove('hidden');
+        }
+
+        function closeExportModal() {
+            document.getElementById('export-modal').classList.add('hidden');
+        }
+
+        function exportGeoJSON() {
+            const geojson = {
+                type: "FeatureCollection",
+                features: trees.map(t => {
+                    const utm = latLngToUTM(t.lat, t.lng);
+                    return {
+                        type: "Feature",
+                        geometry: { type: "Point", coordinates: [t.lng, t.lat] },
+                        properties: {
+                            id: t.id,
+                            name: t.name,
+                            gbh_cm: t.gbh,
+                            dbh_cm: t.dbh,
+                            height_m: t.height,
+                            health_score: t.healthScore,
+                            health_desc: getHealthScoreDesc(t.healthScore),
+                            risk_score: t.riskScore,
+                            risk_desc: getRiskScoreDesc(t.riskScore),
+                            mitigation_action: t.action,
+                            utm_zone: utm.zone,
+                            utm_easting: utm.easting,
+                            utm_northing: utm.northing,
+                            notes: t.notes,
+                            createdAt: t.createdAt
+                        }
+                    };
+                })
+            };
+
+            downloadFile(JSON.stringify(geojson, null, 2), `treeplotter_utm_${Date.now()}.geojson`, 'application/geo+json');
+            closeExportModal();
+            showToast('ส่งออก GeoJSON สำเร็จ');
+        }
+
+        function exportCSV() {
+            let csv = '\uFEFF';
+            csv += 'ID,ชื่อพันธุ์ไม้,GBH(cm),DBH(cm),ความสูง(m),คะแนนสุขภาพ(0-4),ระดับสุขภาพ,คะแนนความเสี่ยง(0-4),ระดับความเสี่ยง,แนวทางการแก้ไข,Lat,Lng,UTM Zone,UTM Easting,UTM Northing,หมายเหตุ,วันที่บันทึก\n';
+
+            trees.forEach(t => {
+                const utm = latLngToUTM(t.lat, t.lng);
+                const row = [
+                    t.id,
+                    `"${t.name.replace(/"/g, '""')}"`,
+                    t.gbh,
+                    t.dbh,
+                    t.height || '',
+                    t.healthScore,
+                    `"${getHealthScoreDesc(t.healthScore)}"`,
+                    t.riskScore,
+                    `"${getRiskScoreDesc(t.riskScore)}"`,
+                    `"${(t.action || '').replace(/"/g, '""')}"`,
+                    t.lat,
+                    t.lng,
+                    utm.zone,
+                    utm.easting,
+                    utm.northing,
+                    `"${(t.notes || '').replace(/"/g, '""')}"`,
+                    t.createdAt
+                ];
+                csv += row.join(',') + '\n';
+            });
+
+            downloadFile(csv, `treeplotter_utm_${Date.now()}.csv`, 'text/csv;charset=utf-8;');
+            closeExportModal();
+            showToast('ส่งออก CSV สำเร็จ');
+        }
+
+        function exportKML() {
+            let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>TreePlotter UTM Data</name>
+    <description>สำรวจและประเมินพิกัดต้นไม้</description>
+`;
+
+            trees.forEach(t => {
+                const utm = latLngToUTM(t.lat, t.lng);
+                kml += `    <Placemark>
+      <name>${escapeXml(t.name)} (เสี่ยง: ${t.riskScore}/4)</name>
+      <description><![CDATA[
+        <b>ชื่อพันธุ์ไม้:</b> ${escapeXml(t.name)}<br>
+        <b>UTM Coordinates:</b> ${utm.formatted}<br>
+        <b>GBH:</b> ${t.gbh} cm | <b>DBH:</b> ${t.dbh} cm<br>
+        <b>ความสูง:</b> ${t.height || '-'} m<br>
+        <b>สุขภาพโดยรวม (0-4):</b> ${t.healthScore} - ${getHealthScoreDesc(t.healthScore)}<br>
+        <b>ความเสี่ยงอันตราย (0-4):</b> ${t.riskScore} - ${getRiskScoreDesc(t.riskScore)}<br>
+        <b>แนวทางการแก้ไข:</b> ${escapeXml(t.action || '-')}<br>
+      ]]></description>
+      <Point>
+        <coordinates>${t.lng},${t.lat},0</coordinates>
+      </Point>
+    </Placemark>\n`;
+            });
+
+            kml += `  </Document>\n</kml>`;
+
+            downloadFile(kml, `treeplotter_utm_${Date.now()}.kml`, 'application/vnd.google-earth.kml+xml');
+            closeExportModal();
+            showToast('ส่งออก KML สำเร็จ');
+        }
+
+        function downloadFile(content, fileName, contentType) {
+            const blob = new Blob([content], { type: contentType });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        // Local Storage
+        function saveTreesToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(trees));
+            } catch (e) {
+                showToast('พื้นที่จัดเก็บข้อมูลในเครื่องเต็ม', 'error');
+            }
+        }
+
+        function loadTreesFromStorage() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                try {
+                    trees = JSON.parse(data);
+                    // Migrate legacy v1 format if needed
+                    trees.forEach(t => {
+                        if (!t.gbh && t.dbh) t.gbh = parseFloat((t.dbh * Math.PI).toFixed(1));
+                        if (t.healthScore === undefined) t.healthScore = 0;
+                        if (t.riskScore === undefined) t.riskScore = 0;
+                    });
+                } catch (e) {
+                    trees = [];
+                }
+            }
+        }
+
+        // Helpers
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('translate-x-full');
+        }
+
+        function getHealthScoreDesc(score) {
+            switch (score) {
+                case 0: return 'ปกติ / สมบูรณ์ดีเยี่ยม';
+                case 1: return 'มีร่องรอยโรค/แมลงเล็กน้อย';
+                case 2: return 'ทรงพุ่ม/ลำต้นเริ่มทรุดโทรม';
+                case 3: return 'เสื่อมโทรมหนัก / มีโพรงกิ่งแห้งมาก';
+                case 4: return 'ทรุดโทรมขั้นวิกฤต / ยืนต้นตาย';
+                default: return '-';
+            }
+        }
+
+        function getRiskScoreDesc(score) {
+            switch (score) {
+                case 0: return 'ไม่มีความเสี่ยง (ปกติ)';
+                case 1: return 'ความเสี่ยงต่ำ';
+                case 2: return 'ความเสี่ยงปานกลาง';
+                case 3: return 'ความเสี่ยงสูง';
+                case 4: return 'เสี่ยงสูงมาก / ขั้นวิกฤต';
+                default: return '-';
+            }
+        }
+
+        function getRiskColorHex(score) {
+            if (score <= 1) return '#10b981'; // Green
+            if (score === 2) return '#f59e0b'; // Amber
+            return '#ef4444'; // Red
+        }
+
+        function getRiskBadgeClass(score) {
+            if (score <= 1) return 'bg-emerald-100 text-emerald-800';
+            if (score === 2) return 'bg-amber-100 text-amber-800';
+            return 'bg-red-100 text-red-800';
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-msg');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.innerText = message;
+            toastIcon.className = type === 'error' ? 'fa-solid fa-circle-exclamation text-red-400' : 'fa-solid fa-circle-check text-emerald-400';
+
+            toast.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+                toast.classList.remove('opacity-100', 'translate-y-0');
+            }, 3000);
+        }
+
+        function showConfirmModal(title, msg, onOk) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-msg').innerText = msg;
+            
+            const modal = document.getElementById('confirm-modal');
+            const okBtn = document.getElementById('confirm-ok-btn');
+            const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+            modal.classList.remove('hidden');
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                okBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+
+            okBtn.onclick = () => { cleanup(); if (onOk) onOk(); };
+            cancelBtn.onclick = cleanup;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
+        }
+
+        function escapeXml(str) {
+            if (!str) return '';
+            return str.replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '\'': '&apos;', '"': '&quot;' }[c]));
+        }
+    </script>
+</body>
+</html>
+```eod
