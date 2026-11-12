@@ -17,9 +17,6 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
-  <!-- Proj4js for accurate WGS84 <-> UTM (47N / 48N) conversion -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-
   <!-- JSZip for bundling CSV, GeoJSON, KML, and field photos into a ZIP -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
@@ -44,7 +41,7 @@
     h1, h2, h3, h4, .font-display {
       font-family: 'Prompt', sans-serif;
     }
-    /* Custom scrollbar for clean UI */
+    /* Custom scrollbar */
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
@@ -59,31 +56,50 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #94a3b8;
     }
-    /* Leaflet custom controls & marker styling */
+    /* Leaflet custom controls & compact dot marker styling */
     .leaflet-container {
       font-family: 'Sarabun', sans-serif;
       z-index: 10;
     }
-    .tree-pin-marker {
+    .tree-dot-marker {
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .tree-dot-marker:hover {
+      transform: scale(1.35);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.55), 0 2px 6px rgba(0, 0, 0, 0.6);
+      z-index: 999 !important;
+    }
+    .move-target-pin {
+      width: 28px;
+      height: 28px;
+      background: #2563eb;
+      border: 3px solid #ffffff;
+      border-radius: 9999px;
+      box-shadow: 0 0 0 8px rgba(37, 99, 235, 0.35), 0 4px 12px rgba(0, 0, 0, 0.5);
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 9999px;
-      border: 2.5px solid #ffffff;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
       color: #ffffff;
-      font-family: 'Prompt', sans-serif;
-      font-weight: 700;
-      font-size: 11px;
-      transition: transform 0.15s ease;
+      font-size: 13px;
+      cursor: grab;
+      animation: targetPulse 1.6s infinite;
     }
-    .tree-pin-marker:hover {
-      transform: scale(1.18);
-      z-index: 999 !important;
+    .move-target-pin:active {
+      cursor: grabbing;
+    }
+    @keyframes targetPulse {
+      0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.65), 0 4px 12px rgba(0, 0, 0, 0.5); }
+      70% { box-shadow: 0 0 0 16px rgba(37, 99, 235, 0), 0 4px 12px rgba(0, 0, 0, 0.5); }
+      100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0), 0 4px 12px rgba(0, 0, 0, 0.5); }
     }
     .gps-pulse-dot {
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
       background: #2563eb;
       border: 3px solid #ffffff;
       border-radius: 50%;
@@ -95,7 +111,6 @@
       70% { box-shadow: 0 0 0 14px rgba(37, 99, 235, 0); }
       100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
     }
-    /* Hide scrollbar on horizontal badge strip while allowing scroll */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -128,14 +143,13 @@
           </div>
         </div>
 
-        <!-- Divider -->
         <div class="h-6 w-px bg-emerald-700 hidden md:block mx-1"></div>
 
         <!-- Project Folder Dropdown & CRUD Buttons -->
         <div class="flex items-center gap-1.5 bg-emerald-950/60 border border-emerald-700/70 rounded-xl p-1">
           <span class="text-xs text-emerald-300 pl-1.5 hidden sm:inline">📁 โฟลเดอร์:</span>
           <select id="folderSelect" onchange="handleFolderChange(this.value)"
-            class="bg-emerald-900 text-white text-xs sm:text-sm font-medium rounded-lg px-2 py-1.5 border border-emerald-600/60 focus:outline-none focus:ring-2 focus:ring-emerald-400 max-w-[150px] sm:max-w-[210px] truncate cursor-pointer">
+            class="bg-emerald-900 text-white text-xs sm:text-sm font-medium rounded-lg px-2 py-1.5 border border-emerald-600/60 focus:outline-none focus:ring-2 focus:ring-emerald-400 max-w-[140px] sm:max-w-[200px] truncate cursor-pointer">
           </select>
           <button onclick="openCreateFolderModal()" title="สร้างโฟลเดอร์โครงการใหม่"
             class="px-2 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-semibold transition flex items-center gap-1 shrink-0">
@@ -152,13 +166,13 @@
         </div>
       </div>
 
-      <!-- Right Controls: Cloud Sync Status, Manual Sync, Surveyor, Cloud Settings -->
+      <!-- Right Controls: Cloud Sync Status, Manual Sync, Surveyor, Sidebar Toggle, Cloud Settings -->
       <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
         <!-- Cloud Status Indicator -->
         <div id="cloudStatusBadge"
           class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-600/50 text-xs font-medium text-emerald-100">
           <span id="cloudStatusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span id="cloudStatusText">🟢 ออนไลน์ (รองรับทีม 10+ คน)</span>
+          <span id="cloudStatusText">🟢 ออนไลน์</span>
         </div>
 
         <!-- Manual Sync Button -->
@@ -173,14 +187,21 @@
           class="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 border border-amber-400/50 text-xs font-semibold text-amber-100 flex items-center gap-1 transition">
           <span>👤</span>
           <span class="hidden md:inline">ผู้สำรวจ:</span>
-          <span id="headerSurveyorName" class="font-bold text-white max-w-[90px] truncate">ยังไม่ระบุ</span>
+          <span id="headerSurveyorName" class="font-bold text-white max-w-[85px] truncate">ยังไม่ระบุ</span>
+        </button>
+
+        <!-- Desktop Collapsible Right Sidebar Toggle Button -->
+        <button id="btnToggleDesktopSidebar" onclick="toggleDesktopSidebar()" title="เปิดหรือปิดหน้าต่างรายการต้นไม้ด้านขวา"
+          class="hidden lg:flex px-2.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 active:scale-95 border border-emerald-500/40 text-xs font-semibold text-white items-center gap-1.5 transition">
+          <span>📋</span>
+          <span id="desktopSidebarToggleLabel">ปิดแถบรายการ</span>
         </button>
 
         <!-- Cloud Settings Button -->
         <button onclick="openCloudSettingsModal()" title="ตั้งค่าการเชื่อมต่อ Google Sheets / Apps Script"
           class="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 active:scale-95 border border-slate-600/60 text-xs font-medium text-slate-200 flex items-center gap-1 transition">
           <span>⚙️</span>
-          <span class="hidden lg:inline">ตั้งค่า Cloud</span>
+          <span class="hidden xl:inline">ตั้งค่า Cloud</span>
         </button>
       </div>
     </div>
@@ -204,9 +225,9 @@
   </header>
 
   <!-- ===================================================================== -->
-  <!-- 3. MOBILE VIEW SWITCHER (Map vs List on Small Screens)                -->
+  <!-- 3. MOBILE / TABLET VIEW SWITCHER (< lg screens)                       -->
   <!-- ===================================================================== -->
-  <div class="md:hidden bg-white border-b border-slate-200 grid grid-cols-2 shrink-0 z-20">
+  <div class="lg:hidden bg-white border-b border-slate-200 grid grid-cols-2 shrink-0 z-20">
     <button id="tabMobileMap" onclick="switchMobileTab('map')"
       class="py-2.5 text-xs font-display font-semibold text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/50 flex items-center justify-center gap-1.5">
       <span>🗺️</span> แผนที่ดาวเทียม
@@ -218,7 +239,7 @@
   </div>
 
   <!-- ===================================================================== -->
-  <!-- 4. MAIN WORKSPACE: SATELLITE MAP + SIDEBAR LIST & EXPORT              -->
+  <!-- 4. MAIN WORKSPACE: SATELLITE MAP + COLLAPSIBLE SIDEBAR                -->
   <!-- ===================================================================== -->
   <main class="flex-1 flex overflow-hidden relative">
 
@@ -226,39 +247,74 @@
     <section id="mapSection" class="flex-1 relative h-full w-full">
       <div id="map" class="w-full h-full bg-slate-900"></div>
 
-      <!-- Floating Top-Right Map Controls -->
-      <div class="absolute top-3 right-3 z-20 flex flex-col gap-2 items-end">
-        <!-- Primary Action: Pin New Tree at Center or Tap Map -->
-        <button onclick="openNewTreeAtMapCenter()"
-          class="px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-display font-semibold text-xs sm:text-sm shadow-lg shadow-emerald-950/30 border border-emerald-400/50 flex items-center gap-1.5 transition">
-          <span class="text-base">📍</span>
-          <span>ปักหมุดต้นไม้ใหม่</span>
-        </button>
-
-        <!-- GPS Locate Me -->
-        <button onclick="locateUserGPS()"
-          class="px-3 py-2 rounded-xl bg-white/95 hover:bg-white active:scale-95 text-slate-800 font-semibold text-xs shadow-md border border-slate-200 flex items-center gap-1.5 transition">
-          <span class="text-blue-600 text-sm">🧭</span>
-          <span>ตำแหน่งฉัน (GPS)</span>
-        </button>
-
-        <!-- Toggle Street / Place Labels Overlay -->
-        <button id="btnToggleLabels" onclick="toggleLabelsOverlay()"
-          class="px-3 py-2 rounded-xl bg-emerald-700 text-white font-semibold text-xs shadow-md border border-emerald-500 flex items-center gap-1.5 transition">
-          <span>🏷️</span>
-          <span>ป้ายชื่อสถานที่: เปิด</span>
-        </button>
-
-        <!-- Toggle Ultra-Zoom 5x5m / 10x10m Metric Grid -->
-        <button id="btnToggleGrid" onclick="toggleMetricGrid()"
-          class="px-3 py-2 rounded-xl bg-white/95 hover:bg-white text-slate-700 font-semibold text-xs shadow-md border border-slate-200 flex items-center gap-1.5 transition">
-          <span>⊞</span>
-          <span id="gridToggleLabel">กริดระยะ 5x5ม.: ปิด</span>
-        </button>
+      <!-- MOVE PIN MODE TOP BANNER -->
+      <div id="movePinBanner" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-30 w-[94%] max-w-lg bg-blue-950/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border-2 border-blue-400 p-3 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-display font-bold text-xs sm:text-sm text-blue-200 flex items-center gap-1.5">
+              <span>📍 โหมดย้ายตำแหน่งจุด:</span>
+              <span id="movePinTreeLabel" class="text-white truncate">-</span>
+            </div>
+            <div id="movePinUtmLive" class="text-[11px] font-mono text-blue-100 mt-0.5">
+              ลากหมุดสีน้ำเงินหรือแตะตำแหน่งใหม่บนแผนที่
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="confirmMovePin()"
+              class="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-display font-bold text-xs shadow transition">
+              ✅ ยืนยันตำแหน่งใหม่
+            </button>
+            <button onclick="cancelMovePin()"
+              class="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white font-display font-semibold text-xs transition">
+              ✖ ยกเลิก
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Top-Left Hint & Live UTM Crosshair / GPS Readout -->
-      <div class="absolute top-3 left-12 sm:left-14 z-20 pointer-events-none flex flex-col gap-1.5 max-w-[230px] sm:max-w-xs">
+      <!-- FLOATING TOP-RIGHT MAP CONTROLS STACK -->
+      <div class="absolute top-3 right-3 z-20 flex flex-col gap-2 items-end">
+        <!-- Master Collapse/Expand Map Tools Button -->
+        <button id="btnToggleMapTools" onclick="toggleMapTools()"
+          class="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 active:scale-95 text-white font-display font-semibold text-xs shadow-lg border border-white/20 flex items-center gap-1.5 transition">
+          <span id="mapToolsToggleIcon">👁️</span>
+          <span id="mapToolsToggleText">ซ่อนเครื่องมือ</span>
+        </button>
+
+        <!-- Collapsible Tools Stack -->
+        <div id="mapToolsStack" class="flex flex-col gap-2 items-end transition-all">
+          <!-- 1) Toggle Canopy Spread Circles (Replaces "ปักหมุดต้นไม้ใหม่" button) -->
+          <button id="btnToggleCanopy" onclick="toggleCanopySpread()"
+            class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-display font-semibold text-xs shadow-md border border-emerald-400 flex items-center gap-1.5 transition">
+            <span>🌳</span>
+            <span id="canopyToggleLabel">ขนาดทรงพุ่ม: เปิด</span>
+          </button>
+
+          <!-- 2) GPS Locate Me -->
+          <button onclick="locateUserGPS()"
+            class="px-3 py-2 rounded-xl bg-white/95 hover:bg-white active:scale-95 text-slate-800 font-semibold text-xs shadow-md border border-slate-200 flex items-center gap-1.5 transition">
+            <span>📍</span>
+            <span>ตำแหน่งฉัน (GPS)</span>
+          </button>
+
+          <!-- 3) Toggle Street / Place Labels Overlay -->
+          <button id="btnToggleLabels" onclick="toggleLabelsOverlay()"
+            class="px-3 py-2 rounded-xl bg-emerald-700 text-white font-semibold text-xs shadow-md border border-emerald-500 flex items-center gap-1.5 transition">
+            <span>🏷️</span>
+            <span>ป้ายชื่อสถานที่: เปิด</span>
+          </button>
+
+          <!-- 4) Toggle Ultra-Zoom 5x5m Metric Grid -->
+          <button id="btnToggleGrid" onclick="toggleMetricGrid()"
+            class="px-3 py-2 rounded-xl bg-white/95 hover:bg-white text-slate-700 font-semibold text-xs shadow-md border border-slate-200 flex items-center gap-1.5 transition">
+            <span>⊞</span>
+            <span id="gridToggleLabel">กริดระยะ 5x5ม.: ปิด</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Top-Left Hint & Live GPS UTM Readout -->
+      <div id="mapTopLeftHint" class="absolute top-3 left-12 sm:left-14 z-20 pointer-events-none flex flex-col gap-1.5 max-w-[215px] sm:max-w-xs">
         <div class="bg-slate-900/85 backdrop-blur-sm text-white px-3 py-1.5 rounded-xl shadow-md border border-white/15 text-[11px] sm:text-xs">
           💡 <strong>แตะบนแผนที่</strong> ตรงตำแหน่งต้นไม้เพื่อปักหมุดประเมินสุขภาพทันที
         </div>
@@ -267,49 +323,83 @@
         </div>
       </div>
 
-      <!-- Bottom-Left Risk Legend (5 Levels: 0 to 4) -->
-      <div class="absolute bottom-5 left-3 z-20 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-slate-200 p-2.5 sm:p-3 max-w-[230px] sm:max-w-[260px]">
-        <div class="font-display font-bold text-[11px] sm:text-xs text-slate-700 mb-1.5 flex items-center justify-between">
-          <span>ระดับความเสี่ยงต้นไม้ (0–4)</span>
-          <span id="mapPinCounter" class="text-[10px] font-normal text-slate-500">0 ต้น</span>
-        </div>
-        <div class="space-y-1 text-[11px]">
-          <div class="flex items-center gap-2">
-            <span class="w-3.5 h-3.5 rounded-full shrink-0 border border-white shadow-sm" style="background:#4ade80;"></span>
-            <span class="font-semibold text-slate-700">0: ไม่เสี่ยง / ปกติ</span>
+      <!-- Bottom-Left Collapsible Risk Legend (5 Levels: 0 to 4) -->
+      <div id="riskLegendContainer" class="absolute bottom-5 left-3 z-20 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-slate-200 overflow-hidden max-w-[245px] sm:max-w-[270px]">
+        <button type="button" onclick="toggleRiskLegend()"
+          class="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-50 transition">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs">🎨</span>
+            <span class="font-display font-bold text-[11px] sm:text-xs text-slate-800">สีระดับเสี่ยง (0–4)</span>
+            <span id="mapPinCounter" class="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">0 ต้น</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="w-3.5 h-3.5 rounded-full shrink-0 border border-white shadow-sm" style="background:#15803d;"></span>
-            <span class="font-semibold text-slate-700">1: เสี่ยงต่ำ</span>
+          <span id="riskLegendChevron" class="text-[10px] text-slate-500 font-bold">▼</span>
+        </button>
+
+        <div id="riskLegendBody" class="px-3 pb-2.5 pt-1 border-t border-slate-100 space-y-1 text-[11px]">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full shrink-0 border border-white shadow-sm" style="background:#22c55e;"></span>
+              <span class="font-semibold text-slate-700">0: ไม่เสี่ยง / ปกติ</span>
+            </div>
+            <span id="legendCount_0" class="text-[10px] font-bold text-slate-500">0</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="w-3.5 h-3.5 rounded-full shrink-0 border border-white shadow-sm" style="background:#eab308;"></span>
-            <span class="font-semibold text-slate-700">2: เสี่ยงปานกลาง</span>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full shrink-0 border border-white shadow-sm" style="background:#15803d;"></span>
+              <span class="font-semibold text-slate-700">1: เสี่ยงต่ำ</span>
+            </div>
+            <span id="legendCount_1" class="text-[10px] font-bold text-slate-500">0</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="w-3.5 h-3.5 rounded-full shrink-0 border border-white shadow-sm" style="background:#f97316;"></span>
-            <span class="font-semibold text-slate-700">3: เสี่ยงสูง</span>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full shrink-0 border border-white shadow-sm" style="background:#eab308;"></span>
+              <span class="font-semibold text-slate-700">2: เสี่ยงปานกลาง</span>
+            </div>
+            <span id="legendCount_2" class="text-[10px] font-bold text-slate-500">0</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="w-3.5 h-3.5 rounded-full shrink-0 border border-white shadow-sm" style="background:#dc2626;"></span>
-            <span class="font-semibold text-slate-700">4: เสี่ยงสูงมาก / อันตราย</span>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full shrink-0 border border-white shadow-sm" style="background:#f97316;"></span>
+              <span class="font-semibold text-slate-700">3: เสี่ยงสูง</span>
+            </div>
+            <span id="legendCount_3" class="text-[10px] font-bold text-slate-500">0</span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full shrink-0 border border-white shadow-sm" style="background:#ef4444;"></span>
+              <span class="font-semibold text-slate-700">4: เสี่ยงสูงมาก / อันตราย</span>
+            </div>
+            <span id="legendCount_4" class="text-[10px] font-bold text-slate-500">0</span>
           </div>
         </div>
       </div>
+
+      <!-- Desktop Floating Right-Edge Tab to Collapse/Expand Sidebar -->
+      <button id="btnFloatingSidebarTab" onclick="toggleDesktopSidebar()" title="เปิด/ปิดแถบรายการต้นไม้"
+        class="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-30 bg-emerald-900 hover:bg-emerald-800 text-white border border-r-0 border-emerald-600/60 rounded-l-2xl px-2 py-3.5 shadow-xl flex-col items-center gap-1 text-xs font-display font-bold transition-all">
+        <span id="floatingTabArrow">▶</span>
+        <span id="floatingTabText" class="hidden [writing-mode:vertical-rl] tracking-wider py-1">รายการ</span>
+      </button>
     </section>
 
     <!-- RIGHT SIDEBAR: SEARCH, RISK FILTER, TREE CARDS, EXPORT -->
-    <aside id="sidebarSection" class="hidden md:flex w-full md:w-[400px] lg:w-[440px] bg-white border-l border-slate-200 flex-col h-full shrink-0 z-20">
+    <aside id="sidebarSection" class="hidden lg:flex w-full lg:w-[400px] xl:w-[440px] bg-white border-l border-slate-200 flex-col h-full shrink-0 z-20">
       <!-- Search & Filter Header -->
       <div class="p-3 border-b border-slate-200 bg-slate-50/80 space-y-2.5 shrink-0">
         <div class="flex items-center justify-between">
           <h2 class="font-display font-bold text-sm text-slate-800 flex items-center gap-1.5">
-            <span>🌲 รายการต้นไม้ในโฟลเดอร์</span>
+            <span>📋 รายการต้นไม้ในโฟลเดอร์</span>
             <span id="sidebarTotalBadge" class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">0</span>
           </h2>
-          <button id="btnClearSurveyorFilter" onclick="clearSurveyorFilter()" class="hidden text-[11px] font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition">
-            ✕ ล้างตัวกรองผู้สำรวจ
-          </button>
+          <div class="flex items-center gap-1.5">
+            <button id="btnClearSurveyorFilter" onclick="clearSurveyorFilter()" class="hidden text-[11px] font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition">
+              ✕ ล้างตัวกรอง
+            </button>
+            <button onclick="toggleDesktopSidebar()" title="ปิดหน้าต่างรายการด้านขวา"
+              class="hidden lg:inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 text-xs font-bold transition">
+              ✕
+            </button>
+          </div>
         </div>
 
         <!-- Search Input -->
@@ -378,9 +468,16 @@
             กรอกข้อมูลภาคสนามให้ครบถ้วน ระบบซิงก์เข้าทีมอัตโนมัติ
           </p>
         </div>
-        <button onclick="closeTreeFormModal()" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-lg transition">
-          ✕
-        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btnModalMovePin" onclick="triggerMovePinFromModal()"
+            class="hidden px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-display font-semibold text-xs shadow transition flex items-center gap-1">
+            <span>📍</span>
+            <span>ย้ายจุดบนแผนที่</span>
+          </button>
+          <button type="button" onclick="closeTreeFormModal()" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-lg transition">
+            ✕
+          </button>
+        </div>
       </div>
 
       <!-- Scrollable Form Body -->
@@ -407,27 +504,57 @@
             </div>
             <div class="sm:col-span-2">
               <label class="block text-xs font-semibold text-slate-700 mb-1">ชื่อชนิดพันธุ์ไม้ (Species / Common Name) *</label>
-              <input id="fieldSpecies" type="text" required placeholder="ระบุชื่อต้นไม้ เช่น ก้ามปู, ประดู่บ้าน, หางนกยูงฝรั่ง..."
+              <input id="fieldSpecies" list="thaiSpeciesList" type="text" required placeholder="พิมพ์หรือเลือกชื่อต้นไม้ เช่น ก้ามปู, ประดู่บ้าน..."
                 class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+              <datalist id="thaiSpeciesList">
+                <option value="ก้ามปู (จามจุรี)"></option>
+                <option value="ประดู่บ้าน"></option>
+                <option value="ประดู่ป่า"></option>
+                <option value="หางนกยูงฝรั่ง"></option>
+                <option value="ตะแบกนา"></option>
+                <option value="อินทนิลน้ำ"></option>
+                <option value="ราชพฤกษ์ (คูน)"></option>
+                <option value="นนทรีบ้าน"></option>
+                <option value="ยางนา"></option>
+                <option value="พญาสัตบรรณ (ตีนเป็ด)"></option>
+                <option value="ตีนเป็ดน้ำ"></option>
+                <option value="พิกุล"></option>
+                <option value="บุนนาค"></option>
+                <option value="สารภี"></option>
+                <option value="จำปี"></option>
+                <option value="มะขาม"></option>
+                <option value="โพธิ์"></option>
+                <option value="ไทรย้อยใบแหลม"></option>
+                <option value="หูกวาง"></option>
+                <option value="หูกระจง"></option>
+                <option value="ทองกวาว"></option>
+                <option value="ชมพูพันธุ์ทิพย์"></option>
+                <option value="เสลา"></option>
+                <option value="กันเกรา"></option>
+                <option value="สะเดา"></option>
+                <option value="ขี้เหล็กบ้าน"></option>
+                <option value="มะฮอกกานีใบใหญ่"></option>
+                <option value="สัก"></option>
+              </datalist>
               <!-- Quick Species Chips -->
               <div class="flex flex-wrap gap-1 mt-1.5">
                 <button type="button" onclick="setSpecies('ก้ามปู (จามจุรี)')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ก้ามปู</button>
                 <button type="button" onclick="setSpecies('ประดู่บ้าน')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ประดู่บ้าน</button>
                 <button type="button" onclick="setSpecies('หางนกยูงฝรั่ง')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">หางนกยูงฝรั่ง</button>
-                <button type="button" onclick="setSpecies('ตะแบก')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ตะแบก</button>
-                <button type="button" onclick="setSpecies('ราชพฤกษ์')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ราชพฤกษ์</button>
-                <button type="button" onclick="setSpecies('นนทรี')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">นนทรี</button>
+                <button type="button" onclick="setSpecies('ตะแบกนา')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ตะแบก</button>
+                <button type="button" onclick="setSpecies('ราชพฤกษ์ (คูน)')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ราชพฤกษ์</button>
+                <button type="button" onclick="setSpecies('นนทรีบ้าน')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">นนทรี</button>
                 <button type="button" onclick="setSpecies('ยางนา')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">ยางนา</button>
-                <button type="button" onclick="setSpecies('พญาสัตบรรณ')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">พญาสัตบรรณ</button>
+                <button type="button" onclick="setSpecies('พิกุล')" class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200">พิกุล</button>
               </div>
             </div>
           </div>
 
-          <!-- UTM Coordinates Row (Strictly UTM Only) -->
+          <!-- UTM Coordinates Row -->
           <div class="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3 space-y-2">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-1">
               <span class="text-xs font-bold text-blue-900">📐 พิกัดตำแหน่งระบบ UTM (WGS84)</span>
-              <span class="text-[11px] text-blue-700">แก้ไขค่า E / N เพื่อขยับหมุดได้แม่นยำ</span>
+              <span class="text-[11px] text-blue-700">แก้ไขค่า E / N หรือกด "ย้ายจุดบนแผนที่"</span>
             </div>
             <div class="grid grid-cols-3 gap-2.5">
               <div>
@@ -450,17 +577,17 @@
             </div>
           </div>
 
-          <!-- Dendrometry Measurements: GBH -> Auto DBH, Height, Crown Spread -->
+          <!-- Dendrometry Measurements: GBH <-> Auto DBH, Height, Crown Spread -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">เส้นรอบวง GBH (ซม.)</label>
-              <input id="fieldGbh" type="number" step="0.1" min="0" oninput="updateAutoDbh()" placeholder="ที่ 1.30 ม."
+              <input id="fieldGbh" type="number" step="0.1" min="0" oninput="onGbhInput()" placeholder="ที่ 1.30 ม."
                 class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-emerald-800 mb-1">DBH คำนวณอัตโนมัติ (ซม.)</label>
-              <input id="fieldDbh" type="text" readonly placeholder="GBH ÷ π"
-                class="w-full px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-900 cursor-not-allowed" />
+              <label class="block text-xs font-semibold text-emerald-800 mb-1">DBH (ซม.) <span class="font-normal text-[10px]">(GBH÷π)</span></label>
+              <input id="fieldDbh" type="number" step="0.01" min="0" oninput="onDbhInput()" placeholder="คำนวณอัตโนมัติ"
+                class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50/70 text-sm font-bold text-emerald-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-700 mb-1">ความสูงต้นไม้ (ม.)</label>
@@ -494,9 +621,7 @@
           <!-- 1.1 ส่วนราก (Root) -->
           <div class="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/70 space-y-2.5">
             <div class="font-display font-bold text-xs sm:text-sm text-amber-950">1.1 ส่วนราก (Root)</div>
-            <div id="rootCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
-              <!-- Populated by JS -->
-            </div>
+            <div id="rootCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm"></div>
             <div>
               <div class="flex justify-between items-center text-[11px] text-slate-600 mb-1">
                 <span>อื่นๆ (ส่วนราก):</span>
@@ -511,9 +636,7 @@
           <!-- 1.2 ส่วนลำต้น (Trunk) -->
           <div class="p-3.5 rounded-xl bg-orange-50/40 border border-orange-200/70 space-y-2.5">
             <div class="font-display font-bold text-xs sm:text-sm text-orange-950">1.2 ส่วนลำต้น (Trunk)</div>
-            <div id="trunkCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
-              <!-- Populated by JS -->
-            </div>
+            <div id="trunkCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm"></div>
             <div>
               <div class="flex justify-between items-center text-[11px] text-slate-600 mb-1">
                 <span>อื่นๆ (ส่วนลำต้น):</span>
@@ -528,9 +651,7 @@
           <!-- 1.3 ส่วนเรือนยอด (Crown) -->
           <div class="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200/70 space-y-2.5">
             <div class="font-display font-bold text-xs sm:text-sm text-emerald-950">1.3 ส่วนเรือนยอด (Crown)</div>
-            <div id="crownCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
-              <!-- Populated by JS -->
-            </div>
+            <div id="crownCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm"></div>
             <div>
               <div class="flex justify-between items-center text-[11px] text-slate-600 mb-1">
                 <span>อื่นๆ (ส่วนเรือนยอด):</span>
@@ -552,15 +673,10 @@
             หัวข้อที่ 2: ความเสี่ยงที่จะเกิดอันตราย / ความรุนแรง (สเกล 0–4)
           </h4>
 
-          <!-- Main Risk Score Buttons 0 to 4 -->
           <div class="space-y-2.5">
-            <label class="block text-xs font-semibold text-slate-700">เลือกระดับความเสี่ยงหลัก (สีหมุดบนแผนที่จะเปลี่ยนตามระดับนี้):</label>
-            <div id="mainRiskButtons" class="grid grid-cols-5 gap-2">
-              <!-- Populated by JS -->
-            </div>
-            <div id="mainRiskDescBox" class="p-3.5 rounded-xl border-2 text-xs sm:text-sm transition-all">
-              <!-- Live description updated by JS -->
-            </div>
+            <label class="block text-xs font-semibold text-slate-700">เลือกระดับความเสี่ยงหลัก (สีจุดบนแผนที่จะเปลี่ยนตามระดับนี้):</label>
+            <div id="mainRiskButtons" class="grid grid-cols-5 gap-2"></div>
+            <div id="mainRiskDescBox" class="p-3.5 rounded-xl border-2 text-xs sm:text-sm transition-all"></div>
           </div>
 
           <!-- 2.1 เป้าหมายที่จะได้รับความเสี่ยงอันตราย (Targets) -->
@@ -581,7 +697,6 @@
               </label>
               <div id="targetHumanScores" class="hidden pl-6 flex items-center gap-1.5 flex-wrap">
                 <span class="text-[11px] font-semibold text-slate-600 mr-1">ระดับความเสี่ยงต่อมนุษย์:</span>
-                <!-- 0-4 buttons populated by JS -->
               </div>
             </div>
 
@@ -597,7 +712,6 @@
               </label>
               <div id="targetVehicleScores" class="hidden pl-6 flex items-center gap-1.5 flex-wrap">
                 <span class="text-[11px] font-semibold text-slate-600 mr-1">ระดับความเสี่ยงต่อยานพาหนะ:</span>
-                <!-- 0-4 buttons populated by JS -->
               </div>
             </div>
 
@@ -613,7 +727,6 @@
               </label>
               <div id="targetPropertyScores" class="hidden pl-6 flex items-center gap-1.5 flex-wrap">
                 <span class="text-[11px] font-semibold text-slate-600 mr-1">ระดับความเสี่ยงต่อทรัพย์สิน:</span>
-                <!-- 0-4 buttons populated by JS -->
               </div>
             </div>
           </div>
@@ -628,9 +741,7 @@
             หัวข้อที่ 3: แนวทางการแก้ไข (ระยะเวลาดำเนินการ)
           </h4>
 
-          <div id="mitigationTimingCheckboxes" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs sm:text-sm">
-            <!-- Populated by JS -->
-          </div>
+          <div id="mitigationTimingCheckboxes" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs sm:text-sm"></div>
 
           <div>
             <div class="flex justify-between items-center text-[11px] text-slate-600 mb-1">
@@ -697,10 +808,7 @@
             <span class="text-[11px] text-slate-500">ย่อขนาดอัตโนมัติเพื่ออัปโหลดไว</span>
           </div>
 
-          <!-- Photo Thumbnails Grid -->
-          <div id="photoThumbnailsGrid" class="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-            <!-- Populated by JS -->
-          </div>
+          <div id="photoThumbnailsGrid" class="grid grid-cols-3 sm:grid-cols-5 gap-2.5"></div>
         </div>
       </form>
 
@@ -742,9 +850,8 @@
   </div>
 
   <!-- ===================================================================== -->
-  <!-- 7. FOLDER MANAGEMENT MODALS (Create, Rename, Safe Delete)             -->
+  <!-- 7. FOLDER & TREE DELETION MODALS                                      -->
   <!-- ===================================================================== -->
-  <!-- Create / Rename Folder Modal -->
   <div id="folderInputModal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
       <div class="p-4 sm:p-5 bg-emerald-900 text-white">
@@ -753,7 +860,7 @@
       <div class="p-4 sm:p-5 space-y-4">
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">ชื่อโฟลเดอร์โครงการ / พื้นที่สำรวจ *</label>
-          <input id="folderNameInput" type="text" placeholder="เช่น สวนลุมพินี โซน A, ถนนราชดำเนิน..."
+          <input id="folderNameInput" type="text" placeholder="เช่น กรมอุทยาน โซน A, สวนลุมพินี..."
             class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
         </div>
         <div class="flex justify-end gap-2">
@@ -764,7 +871,6 @@
     </div>
   </div>
 
-  <!-- Safe Folder Deletion Modal (Requires typing exact folder name) -->
   <div id="deleteFolderModal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-rose-200 overflow-hidden">
       <div class="p-4 sm:p-5 bg-rose-700 text-white">
@@ -795,7 +901,6 @@
     </div>
   </div>
 
-  <!-- Safe Single Tree Deletion Confirmation Modal -->
   <div id="deleteTreeModal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
       <div class="p-4 bg-rose-700 text-white">
@@ -848,13 +953,11 @@
           </div>
         </div>
 
-        <!-- Queue & Sync Diagnostics -->
         <div class="p-3 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-between text-xs">
           <span>สถานะคิวรอส่งข้อมูล (Write Queue):</span>
           <strong id="queueDiagnosticText" class="text-emerald-700">0 รายการ (ซิงก์ครบถ้วน)</strong>
         </div>
 
-        <!-- Reference Code.gs Copy Section -->
         <div class="border-t border-slate-200 pt-3 space-y-2">
           <div class="flex items-center justify-between">
             <span class="font-display font-bold text-xs text-slate-700">โค้ดหลังบ้าน Google Apps Script (Code.gs):</span>
@@ -862,7 +965,7 @@
               📋 คัดลอกโค้ด Code.gs
             </button>
           </div>
-          <pre id="gasCodePreview" class="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-[11px] max-h-40 overflow-y-auto select-all"></pre>
+          <pre id="gasCodePreview" class="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-[11px] max-h-48 overflow-y-auto select-all"></pre>
         </div>
       </div>
     </div>
@@ -899,16 +1002,16 @@
       WRITE_QUEUE: 'arborist_write_queue_v2'
     };
 
-    // Risk Level Definitions (0-4) with exact colors & Thai arboriculture descriptions
+    // Risk Level Definitions (0-4) with exact requested colors
     const RISK_LEVELS = [
       {
         level: 0,
         short: 'ไม่เสี่ยง / ปกติ',
-        color: '#4ade80',
-        textColor: '#064e3b',
+        color: '#22c55e',
+        textColor: '#052e16',
         bgSoft: '#f0fdf4',
         borderSoft: '#86efac',
-        kmlColor: 'ff80de4a',
+        kmlColor: 'ff5ec522',
         desc: 'ไม่เสี่ยง / ปกติ — โครงสร้างต้นไม้แข็งแรงสมบูรณ์ ไม่พบจุดบกพร่องที่ก่อให้เกิดอันตราย ดูแลรักษาตามรอบปกติ'
       },
       {
@@ -944,11 +1047,11 @@
       {
         level: 4,
         short: 'เสี่ยงสูงมาก / อันตราย',
-        color: '#dc2626',
+        color: '#ef4444',
         textColor: '#ffffff',
         bgSoft: '#fef2f2',
         borderSoft: '#f87171',
-        kmlColor: 'ff2626dc',
+        kmlColor: 'ff4444ef',
         desc: 'เสี่ยงสูงมาก / อันตราย — อันตรายขั้นวิกฤต มีโอกาสล้มหรือกิ่งใหญ่ร่วงหล่นได้ทุกเมื่อ ต้องกั้นเขตและดำเนินการจัดการเร่งด่วนทันที'
       }
     ];
@@ -985,19 +1088,204 @@
       'ภายใน 6-12 เดือน'
     ];
 
-    // Reference Code.gs string for modal viewer/copy
-    const GAS_BACKEND_CODE = `// Arborist Survey - Google Apps Script Backend (Code.gs)
+    const GAS_BACKEND_CODE = `// ==========================================
+// Arborist Survey - Google Apps Script Backend (Code.gs)
+// ==========================================
 const SHEET_FOLDERS = 'Folders';
 const SHEET_TREES = 'Trees';
 const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
-// (ติดตั้งและ Deploy เป็น Web App เรียบร้อยแล้ว)`;
+
+function setupSheets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let fSheet = ss.getSheetByName(SHEET_FOLDERS);
+  if (!fSheet) {
+    fSheet = ss.insertSheet(SHEET_FOLDERS);
+    fSheet.appendRow(['Folder_ID', 'Folder_Name', 'Created_At']);
+    fSheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#d1fae5');
+  }
+
+  let tSheet = ss.getSheetByName(SHEET_TREES);
+  if (!tSheet) {
+    tSheet = ss.insertSheet(SHEET_TREES);
+    tSheet.appendRow([
+      'Tree_ID', 'Folder_ID', 'Folder_Name', 'Surveyor', 'Species',
+      'UTM_Zone', 'UTM_E', 'UTM_N', 'GBH_cm', 'DBH_cm', 'Height_m', 'Crown_m',
+      'Risk_Score', 'Risk_Label', 'Targets_Summary', 'Mitigation_Timing',
+      'Date_BE', 'Time', 'Photo_Folder_URL', 'Raw_JSON'
+    ]);
+    tSheet.getRange(1, 1, 1, 20).setFontWeight('bold').setBackground('#d1fae5');
+  }
+  return { fSheet, tSheet };
+}
+
+function getOrCreateDriveFolder(parent, name) {
+  const cleanName = String(name || 'General').replace(/[\\/\\\\:*?"<>|]/g, '_').trim();
+  const folders = parent.getFoldersByName(cleanName);
+  return folders.hasNext() ? folders.next() : parent.createFolder(cleanName);
+}
+
+function savePhotosToDrive(folderName, treeId, photos) {
+  if (!photos || !photos.length) return { urls: [], folderUrl: '' };
+  const rootFolder = getOrCreateDriveFolder(DriveApp.getRootFolder(), DRIVE_ROOT_FOLDER);
+  const projectFolder = getOrCreateDriveFolder(rootFolder, folderName);
+  const treeFolder = getOrCreateDriveFolder(projectFolder, treeId);
+  treeFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  const savedUrls = [];
+  photos.forEach((p, idx) => {
+    if (typeof p === 'string' && p.startsWith('data:image')) {
+      const parts = p.split(',');
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const bytes = Utilities.base64Decode(parts[1]);
+      const fileName = \`\${treeId}_photo_\${idx + 1}.jpg\`;
+      const blob = Utilities.newBlob(bytes, mimeType, fileName);
+      const file = treeFolder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      savedUrls.push(\`https://drive.google.com/thumbnail?id=\${file.getId()}&sz=w1000\`);
+    } else if (typeof p === 'string' && p.startsWith('http')) {
+      savedUrls.push(p);
+    }
+  });
+
+  return { urls: savedUrls, folderUrl: treeFolder.getUrl() };
+}
+
+function doGet(e) {
+  try {
+    const { fSheet, tSheet } = setupSheets();
+    const fRows = fSheet.getDataRange().getValues();
+    const folders = [];
+    for (let i = 1; i < fRows.length; i++) {
+      if (fRows[i][0]) {
+        folders.push({
+          id: String(fRows[i][0]),
+          name: String(fRows[i][1]),
+          createdAt: String(fRows[i][2] || '')
+        });
+      }
+    }
+
+    const tRows = tSheet.getDataRange().getValues();
+    const trees = [];
+    for (let i = 1; i < tRows.length; i++) {
+      const rawJson = tRows[i][19];
+      if (rawJson) {
+        try {
+          trees.push(JSON.parse(rawJson));
+        } catch (err) {}
+      }
+    }
+
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'ok', folders, trees })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'error', message: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(15000);
+  try {
+    const payload = JSON.parse(e.postData.contents);
+    const action = payload.action;
+    const { fSheet, tSheet } = setupSheets();
+
+    if (action === 'saveFolder') {
+      const folder = payload.folder;
+      const rows = fSheet.getDataRange().getValues();
+      let foundRow = -1;
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(folder.id)) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+      if (foundRow > 0) {
+        fSheet.getRange(foundRow, 2).setValue(folder.name);
+      } else {
+        fSheet.appendRow([folder.id, folder.name, folder.createdAt || new Date().toISOString()]);
+      }
+    }
+
+    if (action === 'deleteFolder') {
+      const folderId = String(payload.folderId);
+      const fRows = fSheet.getDataRange().getValues();
+      for (let i = fRows.length - 1; i >= 1; i--) {
+        if (String(fRows[i][0]) === folderId) fSheet.deleteRow(i + 1);
+      }
+      const tRows = tSheet.getDataRange().getValues();
+      for (let i = tRows.length - 1; i >= 1; i--) {
+        if (String(tRows[i][1]) === folderId) tSheet.deleteRow(i + 1);
+      }
+    }
+
+    if (action === 'saveTree') {
+      const tree = payload.tree;
+      const folderName = payload.folderName || 'General';
+      const driveRes = savePhotosToDrive(folderName, tree.id, tree.photos || []);
+      if (driveRes.urls.length > 0) {
+        tree.photos = driveRes.urls;
+      }
+      tree.photoFolderUrl = driveRes.folderUrl || tree.photoFolderUrl || '';
+
+      const targetsText = [
+        tree.targets?.human != null ? \`มนุษย์(\${tree.targets.human})\` : '',
+        tree.targets?.vehicle != null ? \`ยานพาหนะ(\${tree.targets.vehicle})\` : '',
+        tree.targets?.property != null ? \`ทรัพย์สิน(\${tree.targets.property})\` : ''
+      ].filter(Boolean).join(', ');
+
+      const rowData = [
+        tree.id, tree.folderId, folderName, tree.surveyor || '', tree.species || '',
+        tree.utmZone || '', tree.utmE || '', tree.utmN || '',
+        tree.gbh || '', tree.dbh || '', tree.height || '', tree.crown || '',
+        tree.riskLevel ?? 0, tree.riskLabel || '', targetsText,
+        (tree.mitigationTiming || []).join(', '),
+        tree.dateBE || '', tree.timeStr || '', tree.photoFolderUrl, JSON.stringify(tree)
+      ];
+
+      const tRows = tSheet.getDataRange().getValues();
+      let foundRow = -1;
+      for (let i = 1; i < tRows.length; i++) {
+        if (String(tRows[i][0]) === String(tree.id)) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+      if (foundRow > 0) {
+        tSheet.getRange(foundRow, 1, 1, rowData.length).setValues([rowData]);
+      } else {
+        tSheet.appendRow(rowData);
+      }
+    }
+
+    if (action === 'deleteTree') {
+      const treeId = String(payload.treeId);
+      const tRows = tSheet.getDataRange().getValues();
+      for (let i = tRows.length - 1; i >= 1; i--) {
+        if (String(tRows[i][0]) === treeId) tSheet.deleteRow(i + 1);
+      }
+    }
+
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'ok' })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: 'error', message: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}`;
 
     // =========================================================================
-    // 2. APPLICATION STATE & PROJ4 UTM DEFINITIONS
+    // 2. APPLICATION STATE & SELF-CONTAINED WGS84 <-> UTM (47N/48N) MATH
     // =========================================================================
-    proj4.defs("EPSG:32647", "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
-    proj4.defs("EPSG:32648", "+proj=utm +zone=48 +datum=WGS84 +units=m +no_defs");
-
     let activeGasUrl = localStorage.getItem(STORAGE_KEYS.GAS_URL) || DEFAULT_GAS_WEB_APP_URL;
     let surveyorName = localStorage.getItem(STORAGE_KEYS.SURVEYOR) || '';
     let folders = [];
@@ -1008,12 +1296,25 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     let selectedRiskFilter = 'all';
     let selectedSurveyorFilter = '';
 
+    // UI Visibility States
+    let mapToolsVisible = true;
+    let canopyVisible = true; // Default ON
+    let labelsVisible = true;
+    let metricGridVisible = false;
+    let riskLegendExpanded = true;
+    let desktopSidebarOpen = true;
+
+    // Move Pin Mode State
+    let movePinTreeId = null;
+    let movePinMarker = null;
+    let movePinPendingUtm = null;
+
     // Form temporary states
     let currentFormRiskLevel = 0;
     let currentTargetScores = { human: 0, vehicle: 0, property: 0 };
-    let currentFormPhotos = []; // Array of base64 dataURLs or Drive URLs
+    let currentFormPhotos = [];
     let currentPhotoFolderUrl = '';
-    let folderModalMode = 'create'; // 'create' | 'rename'
+    let folderModalMode = 'create';
     let pendingDeleteTreeId = null;
 
     // 10+ Concurrent Users Write Queue & Polling State
@@ -1027,15 +1328,120 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     // Leaflet Map instances
     let map = null;
     let labelsLayer = null;
-    let labelsVisible = true;
     let metricGridLayer = null;
-    let metricGridVisible = false;
+    let canopyCirclesLayer = null;
     let treeMarkersLayer = null;
     let userGpsMarker = null;
     let userGpsCircle = null;
 
     // =========================================================================
-    // 3. INITIALIZATION ON WINDOW LOAD
+    // 3. ACCURATE WGS84 <-> UTM COORDINATE MATH (ZERO EXTERNAL CDN RISK)
+    // =========================================================================
+    function latLngToUtm(lat, lng) {
+      const a = 6378137.0;
+      const f = 1 / 298.257223563;
+      const k0 = 0.9996;
+      const e2 = f * (2 - f);
+      const ep2 = e2 / (1 - e2);
+
+      const zoneNum = Math.floor((lng + 180) / 6) + 1;
+      const hemi = lat >= 0 ? 'N' : 'S';
+      const utmZone = `${zoneNum}${hemi}`;
+
+      const lonOrigin = (zoneNum - 1) * 6 - 180 + 3;
+      const lonOriginRad = (lonOrigin * Math.PI) / 180;
+      const latRad = (lat * Math.PI) / 180;
+      const lonRad = (lng * Math.PI) / 180;
+
+      const N = a / Math.sqrt(1 - e2 * Math.sin(latRad) * Math.sin(latRad));
+      const T = Math.tan(latRad) * Math.tan(latRad);
+      const C = ep2 * Math.cos(latRad) * Math.cos(latRad);
+      const A = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+      const M = a * (
+        (1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 * e2 * e2) / 256) * latRad -
+        ((3 * e2) / 8 + (3 * e2 * e2) / 32 + (45 * e2 * e2 * e2) / 1024) * Math.sin(2 * latRad) +
+        ((15 * e2 * e2) / 256 + (45 * e2 * e2 * e2) / 1024) * Math.sin(4 * latRad) -
+        ((35 * e2 * e2 * e2) / 3072) * Math.sin(6 * latRad)
+      );
+
+      const easting = k0 * N * (
+        A +
+        ((1 - T + C) * Math.pow(A, 3)) / 6 +
+        ((5 - 18 * T + T * T + 72 * C - 58 * ep2) * Math.pow(A, 5)) / 120
+      ) + 500000.0;
+
+      let northing = k0 * (
+        M +
+        N * Math.tan(latRad) * (
+          (A * A) / 2 +
+          ((5 - T + 9 * C + 4 * C * C) * Math.pow(A, 4)) / 24 +
+          ((61 - 58 * T + T * T + 600 * C - 330 * ep2) * Math.pow(A, 6)) / 720
+        )
+      );
+
+      if (lat < 0) northing += 10000000.0;
+
+      return {
+        utmZone,
+        utmE: Number(easting.toFixed(2)),
+        utmN: Number(northing.toFixed(2))
+      };
+    }
+
+    function utmToLatLng(utmZone, utmE, utmN) {
+      const a = 6378137.0;
+      const f = 1 / 298.257223563;
+      const k0 = 0.9996;
+      const e2 = f * (2 - f);
+      const ep2 = e2 / (1 - e2);
+      const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+
+      const match = String(utmZone || '47N').trim().toUpperCase().match(/^(\d{1,2})([NS])$/);
+      const zoneNum = match ? parseInt(match[1], 10) : 47;
+      const hemi = match ? match[2] : 'N';
+
+      const x = Number(utmE) - 500000.0;
+      const y = hemi === 'S' ? Number(utmN) - 10000000.0 : Number(utmN);
+
+      const lonOrigin = (zoneNum - 1) * 6 - 180 + 3;
+      const M = y / k0;
+      const mu = M / (a * (1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 * e2 * e2) / 256));
+
+      const phi1Rad =
+        mu +
+        ((3 * e1) / 2 - (27 * Math.pow(e1, 3)) / 32) * Math.sin(2 * mu) +
+        ((21 * e1 * e1) / 16 - (55 * Math.pow(e1, 4)) / 32) * Math.sin(4 * mu) +
+        ((151 * Math.pow(e1, 3)) / 96) * Math.sin(6 * mu) +
+        ((1097 * Math.pow(e1, 4)) / 512) * Math.sin(8 * mu);
+
+      const N1 = a / Math.sqrt(1 - e2 * Math.sin(phi1Rad) * Math.sin(phi1Rad));
+      const T1 = Math.tan(phi1Rad) * Math.tan(phi1Rad);
+      const C1 = ep2 * Math.cos(phi1Rad) * Math.cos(phi1Rad);
+      const R1 = (a * (1 - e2)) / Math.pow(1 - e2 * Math.sin(phi1Rad) * Math.sin(phi1Rad), 1.5);
+      const D = x / (N1 * k0);
+
+      const latRad =
+        phi1Rad -
+        ((N1 * Math.tan(phi1Rad)) / R1) *
+          ((D * D) / 2 -
+            ((5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4)) / 24 +
+            ((61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6)) / 720);
+
+      const lonRad =
+        (D -
+          ((1 + 2 * T1 + C1) * Math.pow(D, 3)) / 6 +
+          ((5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5)) / 120) /
+        Math.cos(phi1Rad);
+
+      return {
+        lat: (latRad * 180) / Math.PI,
+        lng: lonOrigin + (lonRad * 180) / Math.PI
+      };
+    }
+
+    // =========================================================================
+    // 4. INITIALIZATION ON WINDOW LOAD
     // =========================================================================
     window.addEventListener('DOMContentLoaded', () => {
       try {
@@ -1044,17 +1450,14 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         initMap();
         renderAllUI();
 
-        // Prompt for surveyor name if not yet set on this device
         if (!surveyorName) {
           setTimeout(() => openSurveyorModal(), 450);
         }
 
-        // Start immediate initial Cloud sync + staggered 16-22s jitter polling for 10+ users
         syncFromCloud(true);
         scheduleNextStaggeredPoll();
         processWriteQueue();
 
-        // Pause polling when tab hidden, resume immediately when visible
         document.addEventListener('visibilitychange', () => {
           if (!document.hidden) {
             syncFromCloud(false);
@@ -1062,7 +1465,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
           }
         });
 
-        // Automatically flush offline queue when mobile signal returns
         window.addEventListener('online', () => {
           showToast('📶 กลับมาออนไลน์แล้ว กำลังซิงก์ข้อมูลทีม...', 'info');
           processWriteQueue();
@@ -1084,7 +1486,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         trees = Array.isArray(savedTrees) ? savedTrees : [];
         writeQueue = Array.isArray(savedQueue) ? savedQueue : [];
 
-        // Rebuild in-flight locks from persisted queue
         writeQueue.forEach(job => {
           if (job.payload?.tree?.id) inFlightTreeIds.add(String(job.payload.tree.id));
           if (job.payload?.treeId) inFlightTreeIds.add(String(job.payload.treeId));
@@ -1092,7 +1493,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
           if (job.payload?.folderId) inFlightFolderIds.add(String(job.payload.folderId));
         });
 
-        // Ensure at least one default project folder exists locally while awaiting first sync
         if (folders.length === 0) {
           const defaultFolder = {
             id: 'FLD-' + Date.now(),
@@ -1123,11 +1523,10 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     }
 
     // =========================================================================
-    // 4. 10+ CONCURRENT USERS: STAGGERED POLLING & SAFE WRITE QUEUE
+    // 5. 10+ CONCURRENT USERS: STAGGERED POLLING & SAFE WRITE QUEUE
     // =========================================================================
     function scheduleNextStaggeredPoll() {
       if (pollTimerId) clearTimeout(pollTimerId);
-      // Randomized jitter between 16,000 ms and 22,000 ms so 10+ devices never spike simultaneously
       const jitterDelay = 16000 + Math.floor(Math.random() * 6000);
       pollTimerId = setTimeout(async () => {
         if (!document.hidden && navigator.onLine) {
@@ -1151,7 +1550,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       updateCloudStatusUI('syncing');
 
       try {
-        // Add cache-buster param so mobile proxies never return stale GET responses
         const sep = activeGasUrl.includes('?') ? '&' : '?';
         const res = await fetch(`${activeGasUrl}${sep}t=${Date.now()}`, {
           method: 'GET',
@@ -1182,18 +1580,12 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       }
     }
 
-    /**
-     * Merges remote folders & trees from Google Sheets without overwriting
-     * any local edits or deletions currently sitting in the write queue.
-     */
     function mergeCloudDataSafely(remoteFolders, remoteTrees) {
-      // 1. Merge Folders
       const mergedFoldersMap = new Map();
       remoteFolders.forEach(rf => {
         if (rf && rf.id) mergedFoldersMap.set(String(rf.id), rf);
       });
 
-      // Preserve in-flight local folder creates/renames/deletes
       writeQueue.forEach(job => {
         if (job.payload?.action === 'saveFolder' && job.payload.folder) {
           mergedFoldersMap.set(String(job.payload.folder.id), job.payload.folder);
@@ -1210,13 +1602,11 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         activeFolderId = folders[0].id;
       }
 
-      // 2. Merge Trees
       const mergedTreesMap = new Map();
       remoteTrees.forEach(rt => {
         if (rt && rt.id) mergedTreesMap.set(String(rt.id), rt);
       });
 
-      // Protect in-flight local tree saves/deletes from being reverted by older GET snapshot
       writeQueue.forEach(job => {
         if (job.payload?.action === 'saveTree' && job.payload.tree) {
           mergedTreesMap.set(String(job.payload.tree.id), job.payload.tree);
@@ -1225,7 +1615,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         }
       });
 
-      // Remove trees belonging to any deleted folder
       const validFolderIds = new Set(folders.map(f => String(f.id)));
       trees = Array.from(mergedTreesMap.values()).filter(t => validFolderIds.has(String(t.folderId)));
 
@@ -1241,7 +1630,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         createdAt: Date.now()
       };
 
-      // Deduplicate older queued jobs for the exact same entity ID so latest edit wins
       if (payload.action === 'saveTree' && payload.tree?.id) {
         const tid = String(payload.tree.id);
         writeQueue = writeQueue.filter(j => !(j.payload?.action === 'saveTree' && String(j.payload?.tree?.id) === tid));
@@ -1278,7 +1666,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       while (writeQueue.length > 0 && navigator.onLine) {
         const currentJob = writeQueue[0];
         try {
-          // Use text/plain;charset=utf-8 to prevent CORS preflight OPTIONS failure on Google Apps Script
           const res = await fetch(activeGasUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1290,7 +1677,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
           const result = await res.json();
           if (result.status !== 'ok') throw new Error(result.message || 'Server error');
 
-          // Job succeeded: remove from queue and release in-flight lock
           writeQueue.shift();
           releaseInFlightLock(currentJob.payload);
           persistLocalState();
@@ -1300,12 +1686,10 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
           persistLocalState();
 
           if (currentJob.retries >= 3) {
-            // Back off to next cycle rather than infinite tight loop
             isProcessingQueue = false;
             updateCloudStatusUI('offline');
             return;
           }
-          // Exponential backoff with random jitter (1.5s, 3s, 6s...)
           const backoffMs = (1500 * Math.pow(2, currentJob.retries - 1)) + Math.floor(Math.random() * 800);
           await new Promise(r => setTimeout(r, backoffMs));
         }
@@ -1338,57 +1722,31 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       if (mode === 'syncing' || pendingCount > 0) {
         dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
         text.textContent = pendingCount > 0
-          ? `🟡 กำลังส่งข้อมูลทีม (${pendingCount})...`
-          : '🟡 กำลังซิงก์ทีม...';
+          ? `🟡 กำลังส่ง (${pendingCount})...`
+          : '🟡 กำลังซิงก์...';
       } else if (mode === 'offline' || !navigator.onLine) {
         dot.className = 'w-2 h-2 rounded-full bg-rose-500';
         text.textContent = pendingCount > 0
           ? `🔴 ออฟไลน์ (รอส่ง ${pendingCount})`
-          : '🔴 ออฟไลน์ (บันทึกในเครื่อง)';
+          : '🔴 ออฟไลน์';
       } else {
         dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
-        text.textContent = '🟢 ออนไลน์ (รองรับทีม 10+ คน)';
+        text.textContent = '🟢 ออนไลน์';
       }
     }
 
     // =========================================================================
-    // 5. UTM <-> WGS84 COORDINATE UTILITIES (STRICTLY UTM-ONLY DISPLAY)
-    // =========================================================================
-    function latLngToUtm(lat, lng) {
-      const zoneNum = Math.floor((lng + 180) / 6) + 1;
-      const hemi = lat >= 0 ? 'N' : 'S';
-      const utmZone = `${zoneNum}${hemi}`;
-      const projStr = `+proj=utm +zone=${zoneNum} ${lat < 0 ? '+south ' : ''}+datum=WGS84 +units=m +no_defs`;
-      const [easting, northing] = proj4('EPSG:4326', projStr, [lng, lat]);
-      return {
-        utmZone,
-        utmE: Number(easting.toFixed(2)),
-        utmN: Number(northing.toFixed(2))
-      };
-    }
-
-    function utmToLatLng(utmZone, utmE, utmN) {
-      const match = String(utmZone || '47N').trim().toUpperCase().match(/^(\d{1,2})([NS])$/);
-      const zoneNum = match ? parseInt(match[1], 10) : 47;
-      const hemi = match ? match[2] : 'N';
-      const projStr = `+proj=utm +zone=${zoneNum} ${hemi === 'S' ? '+south ' : ''}+datum=WGS84 +units=m +no_defs`;
-      const [lng, lat] = proj4(projStr, 'EPSG:4326', [Number(utmE), Number(utmN)]);
-      return { lat, lng };
-    }
-
-    // =========================================================================
-    // 6. INTERACTIVE LEAFLET SATELLITE MAP & ULTRA-ZOOM METRIC GRID
+    // 6. INTERACTIVE LEAFLET SATELLITE MAP, CANOPY CIRCLES, GRID & MOVE PIN
     // =========================================================================
     function initMap() {
-      // Default center: Bangkok / Central Thailand
       map = L.map('map', {
         center: [13.7563, 100.5018],
-        zoom: 16,
+        zoom: 17,
         maxZoom: 22,
         zoomControl: true
       });
 
-      // Esri World Imagery Satellite Layer (supports digital zoom up to 22)
+      // Esri World Imagery Satellite Layer
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: 'Tiles &copy; Esri',
         maxNativeZoom: 19,
@@ -1410,18 +1768,62 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       ]).addTo(map);
 
       metricGridLayer = L.layerGroup().addTo(map);
+      canopyCirclesLayer = L.layerGroup().addTo(map);
       treeMarkersLayer = L.layerGroup().addTo(map);
 
-      // Tap / Click on map to pin a new tree
+      // Tap / Click on map: either reposition active Move Pin OR open New Tree form
       map.on('click', (e) => {
         const utm = latLngToUtm(e.latlng.lat, e.latlng.lng);
+        if (movePinTreeId) {
+          updateMovePinLocation(e.latlng.lat, e.latlng.lng);
+          return;
+        }
         openNewTreeForm(utm);
       });
 
-      // Redraw metric grid on map move/zoom when enabled
       map.on('moveend zoomend', () => {
         if (metricGridVisible) drawMetricGrid();
       });
+    }
+
+    // Toggle all floating map tools, top-left hint, and risk legend
+    function toggleMapTools() {
+      mapToolsVisible = !mapToolsVisible;
+      const stack = document.getElementById('mapToolsStack');
+      const hint = document.getElementById('mapTopLeftHint');
+      const legend = document.getElementById('riskLegendContainer');
+      const icon = document.getElementById('mapToolsToggleIcon');
+      const text = document.getElementById('mapToolsToggleText');
+
+      if (mapToolsVisible) {
+        stack.classList.remove('hidden');
+        hint.classList.remove('hidden');
+        legend.classList.remove('hidden');
+        icon.textContent = '👁️';
+        text.textContent = 'ซ่อนเครื่องมือ';
+      } else {
+        stack.classList.add('hidden');
+        hint.classList.add('hidden');
+        legend.classList.add('hidden');
+        icon.textContent = '🎛️';
+        text.textContent = 'เครื่องมือแผนที่';
+      }
+    }
+
+    // Toggle Canopy Spread Circles (Default: ON)
+    function toggleCanopySpread() {
+      canopyVisible = !canopyVisible;
+      const btn = document.getElementById('btnToggleCanopy');
+      const label = document.getElementById('canopyToggleLabel');
+
+      if (canopyVisible) {
+        btn.className = 'px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-display font-semibold text-xs shadow-md border border-emerald-400 flex items-center gap-1.5 transition';
+        label.textContent = 'ขนาดทรงพุ่ม: เปิด';
+      } else {
+        btn.className = 'px-3 py-2 rounded-xl bg-white/95 hover:bg-white active:scale-95 text-slate-800 font-display font-semibold text-xs shadow-md border border-slate-200 flex items-center gap-1.5 transition';
+        label.textContent = 'ขนาดทรงพุ่ม: ปิด';
+      }
+      renderMapMarkers();
     }
 
     function toggleLabelsOverlay() {
@@ -1458,14 +1860,13 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
 
       const zoom = map.getZoom();
       const label = document.getElementById('gridToggleLabel');
-      if (zoom < 17) {
+      if (zoom < 18) {
         label.textContent = 'กริด (ซูมเข้าอีก)';
         return;
       }
 
-      // Use 5m grid at zoom >= 19, 10m grid at zoom 17-18
-      const stepMeters = zoom >= 19 ? 5 : 10;
-      label.textContent = `กริด ${stepMeters}x${stepMeters}ม.: เปิด`;
+      const stepMeters = 5;
+      label.textContent = 'กริดระยะ 5x5ม.: เปิด';
 
       const bounds = map.getBounds();
       const swUtm = latLngToUtm(bounds.getSouthWest().lat, bounds.getSouthWest().lng);
@@ -1476,8 +1877,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       const startN = Math.floor(swUtm.utmN / stepMeters) * stepMeters;
       const endN = Math.ceil(neUtm.utmN / stepMeters) * stepMeters;
 
-      // Safety cap to avoid too many lines
-      if ((endE - startE) / stepMeters > 80 || (endN - startN) / stepMeters > 80) return;
+      if ((endE - startE) / stepMeters > 90 || (endN - startN) / stepMeters > 90) return;
 
       const lineStyle = { color: '#38bdf8', weight: 1, opacity: 0.55, dashArray: '3,3', interactive: false };
 
@@ -1491,6 +1891,46 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         const p2 = utmToLatLng(swUtm.utmZone, endE, n);
         L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], lineStyle).addTo(metricGridLayer);
       }
+    }
+
+    function toggleRiskLegend() {
+      riskLegendExpanded = !riskLegendExpanded;
+      const body = document.getElementById('riskLegendBody');
+      const chevron = document.getElementById('riskLegendChevron');
+      if (riskLegendExpanded) {
+        body.classList.remove('hidden');
+        chevron.textContent = '▼';
+      } else {
+        body.classList.add('hidden');
+        chevron.textContent = '▲';
+      }
+    }
+
+    // Desktop Collapsible Right Sidebar Toggle
+    function toggleDesktopSidebar() {
+      desktopSidebarOpen = !desktopSidebarOpen;
+      const sidebar = document.getElementById('sidebarSection');
+      const headerLabel = document.getElementById('desktopSidebarToggleLabel');
+      const floatArrow = document.getElementById('floatingTabArrow');
+      const floatText = document.getElementById('floatingTabText');
+
+      if (desktopSidebarOpen) {
+        sidebar.classList.add('lg:flex');
+        sidebar.classList.remove('lg:hidden');
+        if (headerLabel) headerLabel.textContent = 'ปิดแถบรายการ';
+        if (floatArrow) floatArrow.textContent = '▶';
+        if (floatText) floatText.classList.add('hidden');
+      } else {
+        sidebar.classList.remove('lg:flex');
+        sidebar.classList.add('lg:hidden');
+        if (headerLabel) headerLabel.textContent = 'เปิดแถบรายการ';
+        if (floatArrow) floatArrow.textContent = '◀';
+        if (floatText) floatText.classList.remove('hidden');
+      }
+
+      setTimeout(() => {
+        if (map) map.invalidateSize();
+      }, 160);
     }
 
     function locateUserGPS() {
@@ -1514,43 +1954,143 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
             color: '#2563eb',
             fillColor: '#3b82f6',
             fillOpacity: 0.12,
-            weight: 1
+            weight: 1,
+            interactive: false
           }).addTo(map);
 
           userGpsMarker = L.marker([latitude, longitude], {
             icon: L.divIcon({
               className: '',
               html: '<div class="gps-pulse-dot"></div>',
-              iconSize: [18, 18],
-              iconAnchor: [9, 9]
-            })
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            }),
+            interactive: false
           }).addTo(map);
 
           const utmPill = document.getElementById('liveUtmPill');
           utmPill.classList.remove('hidden');
           utmPill.textContent = `📍 ตำแหน่งฉัน: ${utm.utmZone} E:${utm.utmE} N:${utm.utmN} (±${Math.round(accuracy)}ม.)`;
         },
-        (err) => {
+        () => {
           showToast('ไม่สามารถดึงพิกัด GPS ได้ กรุณาเปิดสิทธิ์ตำแหน่งที่ตั้ง', 'error');
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     }
 
-    function openNewTreeAtMapCenter() {
-      const center = map.getCenter();
-      const utm = latLngToUtm(center.lat, center.lng);
-      openNewTreeForm(utm);
+    // =========================================================================
+    // 7. MOVE PIN MODE ("📍 ย้ายจุด")
+    // =========================================================================
+    function startMovePinMode(treeId) {
+      const tree = trees.find(t => String(t.id) === String(treeId));
+      if (!tree) return;
+
+      // Close any open popup or modal and switch to map view on mobile
+      map.closePopup();
+      closeTreeFormModal();
+      switchMobileTab('map');
+
+      movePinTreeId = String(tree.id);
+      const { lat, lng } = utmToLatLng(tree.utmZone, tree.utmE, tree.utmN);
+      movePinPendingUtm = { utmZone: tree.utmZone, utmE: tree.utmE, utmN: tree.utmN };
+
+      document.getElementById('movePinTreeLabel').textContent = `${tree.id} — ${tree.species}`;
+      document.getElementById('movePinUtmLive').textContent = `UTM: ${tree.utmZone} E:${tree.utmE} N:${tree.utmN}`;
+      document.getElementById('movePinBanner').classList.remove('hidden');
+
+      if (movePinMarker) map.removeLayer(movePinMarker);
+      movePinMarker = L.marker([lat, lng], {
+        draggable: true,
+        zIndexOffset: 1000,
+        icon: L.divIcon({
+          className: '',
+          html: '<div class="move-target-pin">✥</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        })
+      }).addTo(map);
+
+      movePinMarker.on('drag', (ev) => {
+        const pos = ev.target.getLatLng();
+        const u = latLngToUtm(pos.lat, pos.lng);
+        movePinPendingUtm = u;
+        document.getElementById('movePinUtmLive').textContent = `UTM ใหม่: ${u.utmZone} E:${u.utmE} N:${u.utmN}`;
+      });
+
+      map.flyTo([lat, lng], Math.max(map.getZoom(), 19), { duration: 0.7 });
+      showToast('📍 ลากหมุดสีน้ำเงินหรือแตะตำแหน่งใหม่บนแผนที่ แล้วกดยืนยัน', 'info');
+    }
+
+    function updateMovePinLocation(lat, lng) {
+      if (!movePinMarker) return;
+      movePinMarker.setLatLng([lat, lng]);
+      const u = latLngToUtm(lat, lng);
+      movePinPendingUtm = u;
+      document.getElementById('movePinUtmLive').textContent = `UTM ใหม่: ${u.utmZone} E:${u.utmE} N:${u.utmN}`;
+    }
+
+    function confirmMovePin() {
+      if (!movePinTreeId || !movePinPendingUtm) {
+        cancelMovePin();
+        return;
+      }
+      const idx = trees.findIndex(t => String(t.id) === String(movePinTreeId));
+      if (idx >= 0) {
+        const updatedTree = {
+          ...trees[idx],
+          utmZone: movePinPendingUtm.utmZone,
+          utmE: movePinPendingUtm.utmE,
+          utmN: movePinPendingUtm.utmN,
+          updatedAt: new Date().toISOString()
+        };
+        trees[idx] = updatedTree;
+        persistLocalState();
+
+        const activeFolder = folders.find(f => String(f.id) === String(activeFolderId));
+        enqueueWriteJob({
+          action: 'saveTree',
+          folderName: activeFolder ? activeFolder.name : 'General',
+          tree: updatedTree
+        });
+        showToast(`✅ ย้ายตำแหน่งต้นไม้ ${updatedTree.id} เรียบร้อยแล้ว`, 'success');
+      }
+
+      cleanupMovePinUI();
+      renderAllUI();
+    }
+
+    function cancelMovePin() {
+      cleanupMovePinUI();
+      showToast('ยกเลิกการย้ายตำแหน่งจุดแล้ว', 'info');
+    }
+
+    function cleanupMovePinUI() {
+      movePinTreeId = null;
+      movePinPendingUtm = null;
+      if (movePinMarker) {
+        map.removeLayer(movePinMarker);
+        movePinMarker = null;
+      }
+      document.getElementById('movePinBanner').classList.add('hidden');
+    }
+
+    function triggerMovePinFromModal() {
+      const originalId = document.getElementById('editModeOriginalId').value;
+      if (originalId) {
+        startMovePinMode(originalId);
+      }
     }
 
     // =========================================================================
-    // 7. UI RENDERING: FOLDERS, TEAM ROSTER, MAP PINS, SIDEBAR CARDS
+    // 8. UI RENDERING: FOLDERS, TEAM ROSTER, COMPACT DOTS & CANOPY CIRCLES
     // =========================================================================
     function renderAllUI() {
       renderFolderDropdown();
       renderSurveyorHeader();
       renderTeamRosterBar();
       renderRiskFilterPills();
+      renderRiskLegendCounts();
       renderMapMarkers();
       renderTreeList();
     }
@@ -1573,10 +2113,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       document.getElementById('headerSurveyorName').textContent = surveyorName || 'ยังไม่ระบุ';
     }
 
-    /**
-     * Renders the horizontal Team Roster Bar showing all 10+ surveyors active
-     * in the currently selected folder along with their surveyed tree counts.
-     */
     function renderTeamRosterBar() {
       const container = document.getElementById('teamRosterBadges');
       const folderTrees = getActiveFolderTrees();
@@ -1592,14 +2128,13 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         return;
       }
 
-      // Sort surveyors by highest tree count first
       const sortedTeam = Array.from(countsBySurveyor.entries()).sort((a, b) => b[1] - a[1]);
 
       container.innerHTML = sortedTeam.map(([name, count]) => {
         const isSelected = selectedSurveyorFilter === name;
         const isMe = surveyorName && name === surveyorName;
         return `
-          <button onclick="toggleSurveyorFilter('${escapeHtml(name)}')"
+          <button onclick="toggleSurveyorFilter('${escapeJsAttr(name)}')"
             title="คลิกเพื่อกรองดูเฉพาะต้นไม้ที่ ${escapeHtml(name)} สำรวจ"
             class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1 shrink-0 transition border ${
               isSelected
@@ -1687,6 +2222,15 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       container.innerHTML = html;
     }
 
+    function renderRiskLegendCounts() {
+      const folderTrees = getActiveFolderTrees();
+      RISK_LEVELS.forEach(r => {
+        const cnt = folderTrees.filter(t => Number(t.riskLevel) === r.level).length;
+        const el = document.getElementById(`legendCount_${r.level}`);
+        if (el) el.textContent = `${cnt} ต้น`;
+      });
+    }
+
     function setRiskFilter(val) {
       selectedRiskFilter = val;
       renderRiskFilterPills();
@@ -1694,9 +2238,14 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       renderMapMarkers();
     }
 
+    /**
+     * Renders compact 14px x 14px dots (with NO text/ID labels on the map)
+     * plus optional non-interactive canopy spread circles when Canopy Size is ON.
+     */
     function renderMapMarkers() {
-      if (!treeMarkersLayer) return;
+      if (!treeMarkersLayer || !canopyCirclesLayer) return;
       treeMarkersLayer.clearLayers();
+      canopyCirclesLayer.clearLayers();
 
       const filtered = getFilteredTrees();
       document.getElementById('mapPinCounter').textContent = `${filtered.length} ต้น`;
@@ -1707,38 +2256,73 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
           if (isNaN(lat) || isNaN(lng)) return;
 
           const riskObj = RISK_LEVELS[Number(tree.riskLevel) || 0] || RISK_LEVELS[0];
-          const shortCode = String(tree.id || '').replace(/^T-/i, '');
 
+          // 1. Render non-interactive canopy circle if Canopy Spread toggle is ON and crown > 0
+          const crownDiameter = parseFloat(tree.crown);
+          if (canopyVisible && !isNaN(crownDiameter) && crownDiameter > 0) {
+            L.circle([lat, lng], {
+              radius: crownDiameter / 2,
+              color: riskObj.color,
+              fillColor: riskObj.color,
+              weight: 1.5,
+              dashArray: '4, 4',
+              fillOpacity: 0.16,
+              interactive: false
+            }).addTo(canopyCirclesLayer);
+          }
+
+          // 2. Render small, crisp 14px x 14px colored dot with NO text/ID inside
           const marker = L.marker([lat, lng], {
             icon: L.divIcon({
               className: '',
-              html: `<div class="tree-pin-marker" style="background:${riskObj.color}; color:${riskObj.textColor}; width:32px; height:32px;">
-                      ${escapeHtml(shortCode || tree.riskLevel)}
-                    </div>`,
-              iconSize: [32, 32],
-              iconAnchor: [16, 16]
+              html: `<div class="tree-dot-marker" style="background:${riskObj.color};"></div>`,
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
             })
           });
 
-          // Popup strictly displays UTM coordinates only (never Lat/Lng)
+          const photos = Array.isArray(tree.photos) ? tree.photos : [];
+          const thumbsHtml = photos.length > 0
+            ? `<div class="flex gap-1.5 overflow-x-auto pt-1 pb-0.5">
+                ${photos.map((src, i) => `
+                  <img src="${escapeHtml(src)}" alt="ภาพ ${i + 1}"
+                    onclick="openPhotoLightbox('${escapeJsAttr(src)}')"
+                    onerror="this.src='https://placehold.co/120x120/e2e8f0/475569?text=Photo'"
+                    class="w-11 h-11 rounded-lg object-cover border border-slate-200 cursor-zoom-in shrink-0" />
+                `).join('')}
+              </div>`
+            : '';
+
           const popupHtml = `
-            <div class="font-sans min-w-[210px] space-y-1.5">
-              <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-1">
-                <strong class="font-display text-sm text-slate-900">${escapeHtml(tree.id)} — ${escapeHtml(tree.species)}</strong>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:${riskObj.color}; color:${riskObj.textColor};">
+            <div class="font-sans min-w-[235px] max-w-[270px] space-y-1.5">
+              <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-1.5">
+                <div class="min-w-0">
+                  <div class="font-display font-bold text-sm text-slate-900 leading-tight">${escapeHtml(tree.id)} — ${escapeHtml(tree.species)}</div>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style="background:${riskObj.color}; color:${riskObj.textColor};">
                   ระดับ ${riskObj.level}
                 </span>
               </div>
               <div class="text-xs text-slate-600 space-y-0.5">
-                <div>📐 <strong>UTM:</strong> ${escapeHtml(tree.utmZone)} E:${tree.utmE} N:${tree.utmN}</div>
-                <div>📏 <strong>ขนาด:</strong> GBH ${tree.gbh || '-'} ซม. | DBH ${tree.dbh || '-'} ซม. | สูง ${tree.height || '-'} ม.</div>
                 <div>👷 <strong>ผู้สำรวจ:</strong> ${escapeHtml(tree.surveyor || '-')}</div>
                 <div>📅 <strong>วันที่:</strong> ${escapeHtml(tree.dateBE || '-')} ${escapeHtml(tree.timeStr || '')}</div>
+                <div>📏 <strong>ขนาด:</strong> GBH ${tree.gbh || '-'} | DBH ${tree.dbh || '-'} ซม.</div>
+                <div>🌳 <strong>สูง / ทรงพุ่ม:</strong> ${tree.height || '-'} ม. / ${tree.crown || '-'} ม.</div>
+                <div class="font-mono text-[11px]">📐 <strong>UTM:</strong> ${escapeHtml(tree.utmZone)} E:${tree.utmE} N:${tree.utmN}</div>
               </div>
-              <div class="pt-1 flex gap-1.5">
-                <button onclick="openEditTreeForm('${escapeHtml(tree.id)}')"
-                  class="flex-1 py-1 px-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500">
-                  ✏️ แก้ไข / ดูรายละเอียด
+              ${thumbsHtml}
+              <div class="pt-1.5 grid grid-cols-3 gap-1">
+                <button onclick="openEditTreeForm('${escapeJsAttr(tree.id)}')"
+                  class="py-1.5 px-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-display font-semibold text-center">
+                  ✏️ แก้ไข
+                </button>
+                <button onclick="startMovePinMode('${escapeJsAttr(tree.id)}')"
+                  class="py-1.5 px-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-display font-semibold text-center">
+                  📍 ย้ายจุด
+                </button>
+                <button onclick="openDeleteTreeModal('${escapeJsAttr(tree.id)}')"
+                  class="py-1.5 px-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-display font-semibold text-center">
+                  🗑️ ลบ
                 </button>
               </div>
             </div>
@@ -1765,7 +2349,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
           <div class="text-center py-12 px-4 bg-white rounded-2xl border border-dashed border-slate-300 space-y-2">
             <div class="text-3xl">🌱</div>
             <div class="font-display font-bold text-sm text-slate-700">ไม่พบรายการต้นไม้ที่ตรงกับเงื่อนไข</div>
-            <p class="text-xs text-slate-500">แตะตำแหน่งต้นไม้บนแผนที่ดาวเทียม หรือกดปุ่ม "ปักหมุดต้นไม้ใหม่" เพื่อเริ่มบันทึก</p>
+            <p class="text-xs text-slate-500">แตะตำแหน่งต้นไม้บนแผนที่ดาวเทียมเพื่อเริ่มปักหมุดและบันทึกข้อมูลได้ทันที</p>
           </div>
         `;
         return;
@@ -1795,15 +2379,19 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
 
               <!-- Quick Actions -->
               <div class="flex items-center gap-1 shrink-0">
-                <button onclick="zoomToTree('${escapeHtml(tree.id)}')" title="ซูมไปยังตำแหน่งบนแผนที่"
+                <button onclick="zoomToTree('${escapeJsAttr(tree.id)}')" title="ซูมไปยังตำแหน่งบนแผนที่"
                   class="p-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-semibold border border-sky-200">
+                  🔍
+                </button>
+                <button onclick="startMovePinMode('${escapeJsAttr(tree.id)}')" title="ย้ายตำแหน่งจุดบนแผนที่"
+                  class="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold border border-blue-200">
                   📍
                 </button>
-                <button onclick="openEditTreeForm('${escapeHtml(tree.id)}')" title="แก้ไขข้อมูล"
+                <button onclick="openEditTreeForm('${escapeJsAttr(tree.id)}')" title="แก้ไขข้อมูล"
                   class="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-semibold border border-amber-200">
                   ✏️
                 </button>
-                <button onclick="openDeleteTreeModal('${escapeHtml(tree.id)}')" title="ลบต้นไม้"
+                <button onclick="openDeleteTreeModal('${escapeJsAttr(tree.id)}')" title="ลบต้นไม้"
                   class="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200">
                   🗑️
                 </button>
@@ -1814,7 +2402,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
             <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-100">
               <div class="font-mono truncate">📐 ${escapeHtml(tree.utmZone)} E:${tree.utmE}</div>
               <div class="font-mono truncate">N:${tree.utmN}</div>
-              <div>📏 DBH: <strong>${tree.dbh || '-'}</strong> ซม. | สูง: <strong>${tree.height || '-'}</strong> ม.</div>
+              <div>📏 DBH: <strong>${tree.dbh || '-'}</strong> ซม. | ทรงพุ่ม: <strong>${tree.crown || '-'}</strong> ม.</div>
               <div>📸 รูปถ่าย: <strong>${photoCount}/5</strong> ภาพ</div>
             </div>
 
@@ -1859,34 +2447,30 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     }
 
     // =========================================================================
-    // 8. 4-SECTION FIELD ASSESSMENT FORM LOGIC & WORD COUNTER
+    // 9. 4-SECTION FIELD ASSESSMENT FORM LOGIC & WORD COUNTER
     // =========================================================================
     function initFormStaticOptions() {
-      // 1.1 Root Checkboxes
-      document.getElementById('rootCheckboxes').innerHTML = ROOT_OPTIONS.map((opt, idx) => `
+      document.getElementById('rootCheckboxes').innerHTML = ROOT_OPTIONS.map(opt => `
         <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-amber-200/80 hover:bg-amber-50 cursor-pointer">
           <input type="checkbox" name="rootCheck" value="${escapeHtml(opt)}" class="w-4 h-4 rounded text-emerald-600" />
           <span>${escapeHtml(opt)}</span>
         </label>
       `).join('');
 
-      // 1.2 Trunk Checkboxes
-      document.getElementById('trunkCheckboxes').innerHTML = TRUNK_OPTIONS.map((opt, idx) => `
+      document.getElementById('trunkCheckboxes').innerHTML = TRUNK_OPTIONS.map(opt => `
         <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-orange-200/80 hover:bg-orange-50 cursor-pointer">
           <input type="checkbox" name="trunkCheck" value="${escapeHtml(opt)}" class="w-4 h-4 rounded text-emerald-600" />
           <span>${escapeHtml(opt)}</span>
         </label>
       `).join('');
 
-      // 1.3 Crown Checkboxes
-      document.getElementById('crownCheckboxes').innerHTML = CROWN_OPTIONS.map((opt, idx) => `
+      document.getElementById('crownCheckboxes').innerHTML = CROWN_OPTIONS.map(opt => `
         <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-emerald-200/80 hover:bg-emerald-50 cursor-pointer">
           <input type="checkbox" name="crownCheck" value="${escapeHtml(opt)}" class="w-4 h-4 rounded text-emerald-600" />
           <span>${escapeHtml(opt)}</span>
         </label>
       `).join('');
 
-      // 2. Main Risk Buttons (0 - 4)
       document.getElementById('mainRiskButtons').innerHTML = RISK_LEVELS.map(r => `
         <button type="button" id="riskBtn_${r.level}" onclick="selectMainRisk(${r.level})"
           class="py-2.5 px-1 rounded-2xl border-2 font-display font-bold text-center transition flex flex-col items-center justify-center gap-0.5">
@@ -1895,7 +2479,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         </button>
       `).join('');
 
-      // 2.1 Target Score Selectors (human, vehicle, property)
       ['human', 'vehicle', 'property'].forEach(targetKey => {
         const capKey = targetKey.charAt(0).toUpperCase() + targetKey.slice(1);
         const container = document.getElementById(`target${capKey}Scores`);
@@ -1909,7 +2492,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         container.innerHTML = labelSpan + buttonsHtml;
       });
 
-      // 3. Mitigation Timing Checkboxes
       document.getElementById('mitigationTimingCheckboxes').innerHTML = MITIGATION_TIMING_OPTIONS.map(opt => `
         <label class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:bg-emerald-50 cursor-pointer font-semibold">
           <input type="checkbox" name="mitigationTimingCheck" value="${escapeHtml(opt)}" class="w-4 h-4 rounded text-emerald-600" />
@@ -1979,7 +2561,8 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       document.getElementById('fieldSpecies').value = name;
     }
 
-    function updateAutoDbh() {
+    // Bidirectional GBH <-> DBH auto-calculation
+    function onGbhInput() {
       const gbh = parseFloat(document.getElementById('fieldGbh').value);
       const dbhField = document.getElementById('fieldDbh');
       if (!isNaN(gbh) && gbh > 0) {
@@ -1989,9 +2572,16 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       }
     }
 
-    /**
-     * Counts Thai/English words accurately using Intl.Segmenter and enforces a 100-word limit.
-     */
+    function onDbhInput() {
+      const dbh = parseFloat(document.getElementById('fieldDbh').value);
+      const gbhField = document.getElementById('fieldGbh');
+      if (!isNaN(dbh) && dbh > 0) {
+        gbhField.value = (dbh * Math.PI).toFixed(1);
+      } else {
+        gbhField.value = '';
+      }
+    }
+
     function countThaiWords(text) {
       const trimmed = (text || '').trim();
       if (!trimmed) return 0;
@@ -2064,6 +2654,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
 
     function openNewTreeForm(utm) {
       document.getElementById('editModeOriginalId').value = '';
+      document.getElementById('btnModalMovePin').classList.add('hidden');
       document.getElementById('formModalTitle').textContent = '🌳 บันทึกข้อมูลสำรวจต้นไม้ใหม่';
       document.getElementById('treeAssessmentForm').reset();
 
@@ -2101,6 +2692,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       if (!tree) return;
 
       document.getElementById('editModeOriginalId').value = tree.id;
+      document.getElementById('btnModalMovePin').classList.remove('hidden');
       document.getElementById('formModalTitle').textContent = `✏️ แก้ไขข้อมูลต้นไม้: ${tree.id}`;
       document.getElementById('formDateTimeBadge').textContent = `วันที่ ${tree.dateBE || '-'} เวลา ${tree.timeStr || ''}`;
 
@@ -2115,7 +2707,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       document.getElementById('fieldCrown').value = tree.crown || '';
       document.getElementById('fieldSurveyor').value = tree.surveyor || surveyorName || '';
 
-      // Restore checkboxes for Section 1
       const rootChecks = tree.health?.rootChecks || [];
       document.querySelectorAll('input[name="rootCheck"]').forEach(el => { el.checked = rootChecks.includes(el.value); });
       document.getElementById('fieldRootOther').value = tree.health?.rootOther || '';
@@ -2131,7 +2722,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       document.getElementById('fieldCrownOther').value = tree.health?.crownOther || '';
       enforceWordLimit(document.getElementById('fieldCrownOther'), 'countCrownOther', 100);
 
-      // Restore Section 2 Risk & Targets
       selectMainRisk(Number(tree.riskLevel) || 0);
       currentTargetScores = {
         human: tree.targets?.human ?? 0,
@@ -2150,19 +2740,16 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         }
       });
 
-      // Restore Section 3 Mitigation
       const timings = tree.mitigationTiming || [];
       document.querySelectorAll('input[name="mitigationTimingCheck"]').forEach(el => { el.checked = timings.includes(el.value); });
       document.getElementById('fieldMitigationOther').value = tree.mitigationOther || '';
       enforceWordLimit(document.getElementById('fieldMitigationOther'), 'countMitigationOther', 100);
 
-      // Restore Section 4 Management
       document.getElementById('fieldMgmtHealth').value = tree.mgmtHealth || '';
       enforceWordLimit(document.getElementById('fieldMgmtHealth'), 'countMgmtHealth', 100);
       document.getElementById('fieldMgmtRisk').value = tree.mgmtRisk || '';
       enforceWordLimit(document.getElementById('fieldMgmtRisk'), 'countMgmtRisk', 100);
 
-      // Restore Photos
       currentFormPhotos = Array.isArray(tree.photos) ? [...tree.photos] : [];
       currentPhotoFolderUrl = tree.photoFolderUrl || '';
       renderFormPhotoThumbnails();
@@ -2194,7 +2781,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         return;
       }
 
-      // Update device surveyor name if newly entered
       if (enteredSurveyor && enteredSurveyor !== surveyorName) {
         surveyorName = enteredSurveyor;
         localStorage.setItem(STORAGE_KEYS.SURVEYOR, surveyorName);
@@ -2245,7 +2831,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         updatedAt: new Date().toISOString()
       };
 
-      // If Tree ID was renamed during edit, remove old ID from local & Cloud
       if (originalId && originalId !== newTreeId) {
         trees = trees.filter(t => String(t.id) !== String(originalId));
         enqueueWriteJob({ action: 'deleteTree', treeId: originalId });
@@ -2273,7 +2858,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     }
 
     // =========================================================================
-    // 9. CLIENT-SIDE IMAGE COMPRESSION (MAX 5 PHOTOS -> GOOGLE DRIVE)
+    // 10. CLIENT-SIDE IMAGE COMPRESSION (MAX 5 PHOTOS -> GOOGLE DRIVE)
     // =========================================================================
     async function handlePhotoFilesSelected(event) {
       const files = Array.from(event.target.files || []);
@@ -2291,7 +2876,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
 
       for (const file of filesToProcess) {
         try {
-          const compressedDataUrl = await compressImageFile(file, 1024, 0.72);
+          const compressedDataUrl = await compressImageFile(file, 1024, 0.75);
           currentFormPhotos.push(compressedDataUrl);
         } catch (err) {
           console.warn('Image compression failed:', err);
@@ -2302,7 +2887,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       renderFormPhotoThumbnails();
     }
 
-    function compressImageFile(file, maxDim = 1024, quality = 0.72) {
+    function compressImageFile(file, maxDim = 1024, quality = 0.75) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -2350,7 +2935,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       grid.innerHTML = currentFormPhotos.map((src, idx) => `
         <div class="relative group aspect-square rounded-xl overflow-hidden border border-slate-300 bg-slate-100">
           <img src="${escapeHtml(src)}" alt="ภาพที่ ${idx + 1}"
-            onclick="openPhotoLightbox('${escapeHtml(src)}')"
+            onclick="openPhotoLightbox('${escapeJsAttr(src)}')"
             onerror="this.src='https://placehold.co/300x300/e2e8f0/475569?text=Photo+${idx + 1}'"
             class="w-full h-full object-cover cursor-zoom-in" />
           <button type="button" onclick="removeFormPhoto(${idx})"
@@ -2376,12 +2961,13 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     }
 
     // =========================================================================
-    // 10. FOLDER & TREE DELETION / SURVEYOR / CLOUD SETTINGS MODALS
+    // 11. FOLDER & TREE DELETION / SURVEYOR / CLOUD SETTINGS MODALS
     // =========================================================================
     function handleFolderChange(newFolderId) {
       activeFolderId = newFolderId;
       selectedSurveyorFilter = '';
       document.getElementById('btnClearSurveyorFilter').classList.add('hidden');
+      if (movePinTreeId) cancelMovePin();
       persistLocalState();
       renderAllUI();
     }
@@ -2504,7 +3090,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       showToast(`🗑️ ลบต้นไม้ ${tid} เรียบร้อย`, 'info');
     }
 
-    // Surveyor Identity Modal
     function openSurveyorModal() {
       document.getElementById('modalSurveyorInput').value = surveyorName || '';
       document.getElementById('surveyorModal').classList.remove('hidden');
@@ -2528,7 +3113,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       showToast(`👤 ตั้งชื่อผู้สำรวจเป็น "${surveyorName}" เรียบร้อย`, 'success');
     }
 
-    // Cloud Settings Modal
     function openCloudSettingsModal() {
       document.getElementById('gasUrlInput').value = activeGasUrl;
       document.getElementById('gasCodePreview').textContent = GAS_BACKEND_CODE;
@@ -2565,14 +3149,13 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
-      showToast('📋 คัดลอกโค้ดอ้างอิงเรียบร้อย', 'success');
+      showToast('📋 คัดลอกโค้ด Code.gs เรียบร้อย', 'success');
     }
 
     // =========================================================================
-    // 11. FOLDER-SCOPED EXPORTS (CSV UTM-ONLY, GEOJSON, KML, ZIP + PHOTOS)
+    // 12. FOLDER-SCOPED EXPORTS (CSV UTM-ONLY, GEOJSON, KML, ZIP + PHOTOS)
     // =========================================================================
     function buildFolderCsvContent(folder, folderTrees) {
-      // Strictly UTM coordinates only (never raw Lat/Lng in CSV)
       const headers = [
         'Tree_ID', 'Folder_Name', 'Surveyor', 'Species',
         'UTM_Zone', 'UTM_Easting_E', 'UTM_Northing_N',
@@ -2687,7 +3270,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
             <b>ชนิดพันธุ์:</b> ${escapeHtml(t.species)}<br/>
             <b>ระดับความเสี่ยง:</b> ${rLevel} (${escapeHtml(t.riskLabel)})<br/>
             <b>พิกัด UTM:</b> ${escapeHtml(t.utmZone)} E:${t.utmE} N:${t.utmN}<br/>
-            <b>ขนาด:</b> GBH ${t.gbh || '-'} ซม. | DBH ${t.dbh || '-'} ซม. | สูง ${t.height || '-'} ม.<br/>
+            <b>ขนาด:</b> GBH ${t.gbh || '-'} ซม. | DBH ${t.dbh || '-'} ซม. | สูง ${t.height || '-'} ม. | ทรงพุ่ม ${t.crown || '-'} ม.<br/>
             <b>ผู้สำรวจ:</b> ${escapeHtml(t.surveyor || '-')}<br/>
             <b>วันที่สำรวจ:</b> ${escapeHtml(t.dateBE || '')} ${escapeHtml(t.timeStr || '')}
           ]]>
@@ -2775,7 +3358,6 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
                   treeSub.file(`${t.id}_photo_${i + 1}.jpg`, blob);
                 }
               } catch (e) {
-                // If CORS blocks direct fetch of Drive thumbnail, include a reference link file
                 treeSub.file(`${t.id}_photo_${i + 1}_link.txt`, p);
               }
             }
@@ -2803,7 +3385,7 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
     }
 
     // =========================================================================
-    // 12. TOAST & ESCAPE HELPERS
+    // 13. TOAST & ESCAPE HELPERS
     // =========================================================================
     function showToast(message, type = 'info') {
       const container = document.getElementById('toastContainer');
@@ -2832,6 +3414,13 @@ const DRIVE_ROOT_FOLDER = 'Arborist_Survey_Photos';
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }
+
+    function escapeJsAttr(str) {
+      return String(str ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;');
     }
   </script>
 </body>
