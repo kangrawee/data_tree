@@ -1,0 +1,2616 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Arborist Survey — ระบบสำรวจและประเมินสุขภาพต้นไม้ภาคสนาม</title>
+
+  <!-- Google Fonts: Inter & Sarabun เพื่อการอ่านภาษาไทยและตัวเลขพิกัดที่คมชัด -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet.js CSS & JS สำหรับแผนที่ดาวเทียมและพิกัดภูมิศาสตร์ -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- JSZip สำหรับส่งออกไฟล์ ZIP พร้อมรูปถ่ายภาคสนาม -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin=""></script>
+
+  <style>
+    /* ตั้งค่าฟอนต์หลักและป้องกันการเลื่อนแนวนอนบนมือถือ */
+    html, body {
+      font-family: 'Sarabun', 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow-x: hidden;
+      background-color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* พื้นหลังแผนที่สีเทาอ่อนป้องกันหน้าจอขาว/ดำระหว่างโหลดไทล์ */
+    #map {
+      width: 100%;
+      height: 100%;
+      background-color: #e2e8f0 !important;
+      z-index: 10;
+    }
+
+    /* ปรับแต่งจุดหมุดต้นไม้ขนาด 14x14px ไม่มีตัวอักษรบังพื้นที่ */
+    .tree-dot-marker {
+      border-radius: 9999px;
+      border: 2.5px solid #ffffff;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+      transition: transform 0.15s ease;
+    }
+    .tree-dot-marker:hover {
+      transform: scale(1.25);
+    }
+
+    /* หมุดสีฟ้าสำหรับโหมดย้ายตำแหน่งต้นไม้ */
+    .move-target-marker {
+      width: 26px;
+      height: 26px;
+      border-radius: 9999px;
+      background: #2563eb;
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.35), 0 4px 10px rgba(0, 0, 0, 0.4);
+      animation: pulseBlue 1.4s infinite;
+    }
+    @keyframes pulseBlue {
+      0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55), 0 4px 10px rgba(0, 0, 0, 0.4); }
+      70% { box-shadow: 0 0 0 12px rgba(37, 99, 235, 0), 0 4px 10px rgba(0, 0, 0, 0.4); }
+      100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0), 0 4px 10px rgba(0, 0, 0, 0.4); }
+    }
+
+    /* จุดตำแหน่ง GPS ของผู้ใช้งาน */
+    .gps-user-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 9999px;
+      background: #0ea5e9;
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 0 6px rgba(14, 165, 233, 0.35);
+    }
+
+    /* ปรับแต่ง Leaflet Popup ให้เหมาะกับหน้าจอมือถือ */
+    .leaflet-popup-content-wrapper {
+      border-radius: 14px !important;
+      padding: 0 !important;
+      overflow: hidden;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25) !important;
+    }
+    .leaflet-popup-content {
+      margin: 0 !important;
+      width: 275px !important;
+    }
+    .leaflet-container a.leaflet-popup-close-button {
+      top: 8px !important;
+      right: 8px !important;
+      width: 26px !important;
+      height: 26px !important;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #334155 !important;
+      font-size: 18px !important;
+      line-height: 24px !important;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    /* ซ่อน Scrollbar แนวนอนในแถบกรองทีม */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen text-slate-800 select-none sm:select-auto">
+
+  <!-- ==================== ส่วนหัวหลักแบบพับเก็บได้ (Collapsible Header) ==================== -->
+  <header id="collapsibleHeader" class="bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-900 text-white shadow-md transition-all duration-200 overflow-hidden z-30">
+    <div class="max-w-7xl mx-auto px-3 pt-2.5 pb-2 space-y-2">
+      <!-- แถวที่ 1: โลโก้ชื่อระบบ และปุ่มควบคุมทีม/Cloud/ส่งออก -->
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-xl shadow-inner">
+            🌳
+          </div>
+          <div>
+            <h1 class="text-base sm:text-lg font-bold leading-tight tracking-tight text-white">Arborist Survey</h1>
+            <p class="text-[11px] text-emerald-200/90 leading-tight">ระบบสำรวจและประเมินสุขภาพต้นไม้ภาคสนาม</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5">
+          <!-- ปุ่มตั้งชื่อผู้สำรวจ -->
+          <button type="button" onclick="openSurveyorModal()" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-500 border border-indigo-400/30 text-xs font-medium flex items-center gap-1.5 transition shadow-sm">
+            <span>👤</span>
+            <span id="headerSurveyorLabel" class="max-w-[90px] truncate">ผู้สำรวจ</span>
+          </button>
+
+          <!-- ปุ่มซิงก์ทีมทันที -->
+          <button type="button" onclick="manualSyncNow()" id="btnManualSync" class="px-2.5 py-1.5 rounded-xl bg-sky-600/80 hover:bg-sky-500 border border-sky-400/30 text-xs font-medium flex items-center gap-1 transition shadow-sm">
+            <span id="syncSpinIcon">🔄</span>
+            <span>ซิงก์ทีม</span>
+          </button>
+
+          <!-- ปุ่มตั้งค่า Cloud -->
+          <button type="button" onclick="openCloudModal()" class="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-600/50 text-xs font-medium flex items-center gap-1 transition shadow-sm">
+            <span>⚙️</span>
+            <span class="hidden xs:inline sm:inline">ตั้งค่า Cloud</span>
+          </button>
+
+          <!-- ปุ่มส่งออกข้อมูล -->
+          <button type="button" onclick="openExportModal()" class="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1 transition shadow-sm">
+            <span>📤</span>
+            <span>ส่งออก</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- แถวที่ 2: ตัวเลือกโฟลเดอร์โครงการ + แถบกรองสมาชิกทีมสำรวจ -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-0.5">
+        <!-- ชุดจัดการโฟลเดอร์ -->
+        <div class="flex items-center gap-1.5">
+          <div class="relative flex-1 sm:flex-initial">
+            <select id="folderSelect" onchange="handleFolderChange(this.value)" class="w-full sm:w-64 appearance-none bg-emerald-950/90 hover:bg-emerald-950 text-white text-xs sm:text-sm font-medium rounded-xl pl-3 pr-8 py-1.5 border border-emerald-600/50 focus:outline-none focus:ring-2 focus:ring-emerald-400">
+            </select>
+            <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-300 text-xs">▼</span>
+          </div>
+
+          <button type="button" onclick="openFolderModal('create')" title="สร้างโฟลเดอร์โครงการใหม่" class="w-8 h-8 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold flex items-center justify-center shadow-sm transition">
+            +
+          </button>
+          <button type="button" onclick="openFolderModal('rename')" title="แก้ไขชื่อโฟลเดอร์" class="w-8 h-8 rounded-xl bg-emerald-800/90 hover:bg-emerald-700 border border-emerald-600/40 text-xs flex items-center justify-center transition">
+            ✏️
+          </button>
+          <button type="button" id="btnDeleteFolder" onclick="confirmDeleteFolder()" title="ลบโฟลเดอร์นี้" class="w-8 h-8 rounded-xl bg-rose-900/80 hover:bg-rose-700 border border-rose-500/40 text-xs flex items-center justify-center transition hidden">
+            🗑️
+          </button>
+        </div>
+
+        <!-- แถบกรองแยกตามรายชื่อทีมสำรวจ -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <span class="text-[11px] text-emerald-200 whitespace-nowrap font-medium">👥 ทีมสำรวจ:</span>
+          <div id="teamFilterChips" class="flex items-center gap-1"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== แถบจับติดขอบบน (Sticky Handle Bar) รองรับ Swipe & Tap ==================== -->
+  <div id="stickyHandleBar" class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-3 py-1.5 flex items-center justify-between gap-2 shadow-sm cursor-pointer">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="text-sm">📁</span>
+      <span id="stickyFolderName" class="text-xs sm:text-sm font-bold text-slate-800 truncate">โครงการสำรวจทั่วไป</span>
+      <span id="syncStatusBadge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+        🟢 พร้อมซิงก์
+      </span>
+    </div>
+
+    <button type="button" id="btnToggleHeader" onclick="toggleHeaderCollapse()" class="px-2.5 py-1 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap transition">
+      <span id="toggleHeaderIcon">▲</span>
+      <span id="toggleHeaderText">เลื่อนขึ้น</span>
+    </button>
+  </div>
+
+  <!-- ==================== แถบสลับแท็บ: แผนที่ดาวเทียม / รายการต้นไม้ ==================== -->
+  <nav id="mainTabBar" class="bg-white border-b border-slate-200 grid grid-cols-2 z-30">
+    <button type="button" id="tabBtnMap" onclick="switchMainTab('map')" class="py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 border-b-2 border-emerald-600 text-emerald-800 bg-emerald-50/40 transition">
+      <span>🛰️</span>
+      <span>แผนที่ดาวเทียม</span>
+    </button>
+    <button type="button" id="tabBtnList" onclick="switchMainTab('list')" class="py-2.5 px-3 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition">
+      <span>📋</span>
+      <span>รายการต้นไม้ (<span id="tabTreeCount">0</span>)</span>
+    </button>
+  </nav>
+
+  <!-- ==================== พื้นที่แสดงผลหลัก (Main Content) ==================== -->
+  <main class="flex-1 flex flex-col relative w-full">
+
+    <!-- มุมมองที่ 1: แผนที่ดาวเทียม -->
+    <section id="mapSection" class="relative w-full overflow-hidden bg-slate-200">
+      <div id="map"></div>
+
+      <!-- ป้ายคำแนะนำบนซ้าย (ซ่อนอัตโนมัติเมื่อเข้าโหมดย้ายหมุด) -->
+      <div id="tapHintBanner" class="absolute top-3 left-3 z-20 max-w-[235px] sm:max-w-xs bg-slate-900/85 backdrop-blur-md text-white px-3 py-2 rounded-2xl shadow-lg border border-white/15 pointer-events-none">
+        <p class="text-[11px] sm:text-xs leading-snug">
+          <span class="text-amber-300 font-bold">💡 แตะบนแผนที่</span> ตรงตำแหน่งต้นไม้เพื่อปักหมุดประเมินสุขภาพทันที
+        </p>
+      </div>
+
+      <!-- แถบแจ้งเตือนโหมดย้ายตำแหน่งต้นไม้ (แสดงเฉพาะตอนกดปุ่ม 📍 ย้ายจุด) -->
+      <div id="moveModeBanner" class="hidden absolute top-3 left-3 right-3 z-30 max-w-xl mx-auto bg-blue-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-blue-400/50">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="space-y-0.5">
+            <div class="text-xs sm:text-sm font-bold flex items-center gap-1.5">
+              <span>📍 โหมดย้ายจุดต้นไม้</span>
+              <span id="moveModeTreeTitle" class="px-2 py-0.5 rounded-lg bg-blue-700 text-blue-100 text-xs">#001</span>
+            </div>
+            <p class="text-[11px] text-blue-100">ลากหมุดสีฟ้า หรือแตะตำแหน่งใหม่บนแผนที่</p>
+            <p id="moveModeCoordsText" class="text-[11px] font-mono text-amber-300">UTM: -</p>
+          </div>
+          <div class="flex items-center gap-2 self-end sm:self-center">
+            <button type="button" onclick="confirmMoveTree()" class="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow transition">
+              ✅ ยืนยันตำแหน่ง
+            </button>
+            <button type="button" onclick="cancelMoveTree()" class="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium text-xs transition">
+              ❌ ยกเลิก
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ชุดปุ่มเครื่องมือบนขวาของแผนที่ -->
+      <div class="absolute top-3 right-3 z-20 flex flex-col items-end gap-1.5">
+        <button type="button" id="btnToggleMapTools" onclick="toggleMapToolsMenu()" class="px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white text-xs font-semibold shadow-lg border border-white/15 flex items-center gap-1.5 transition">
+          <span id="mapToolsToggleIcon">👁️</span>
+          <span id="mapToolsToggleText">ซ่อนเครื่องมือ</span>
+        </button>
+
+        <div id="mapToolsContainer" class="flex flex-col items-end gap-1.5 transition-all">
+          <!-- ปุ่มเปิด/ปิดขนาดทรงพุ่ม (แทนที่ปุ่มปักหมุดต้นไม้ใหม่) -->
+          <button type="button" id="btnToggleCanopy" onclick="toggleCanopyLayer()" class="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md border border-emerald-400/40 flex items-center gap-1.5 transition">
+            <span>🌳</span>
+            <span id="canopyStatusText">ขนาดทรงพุ่ม: เปิด</span>
+          </button>
+
+          <!-- ปุ่มสลับภาพดาวเทียม / แผนที่ถนน -->
+          <button type="button" id="btnToggleBaseMap" onclick="toggleBaseMapLayer()" class="px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 text-xs font-semibold shadow-md border border-slate-200 flex items-center gap-1.5 transition">
+            <span id="baseMapIcon">🛰️</span>
+            <span id="baseMapText">ภาพดาวเทียม</span>
+          </button>
+
+          <!-- ปุ่มค้นหาตำแหน่งฉัน (GPS) -->
+          <button type="button" onclick="locateUserGPS()" class="px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 text-xs font-semibold shadow-md border border-slate-200 flex items-center gap-1.5 transition">
+            <span>📍</span>
+            <span>ตำแหน่งฉัน (GPS)</span>
+          </button>
+
+          <!-- ปุ่มเปิด/ปิดป้ายชื่อสถานที่ -->
+          <button type="button" id="btnToggleLabels" onclick="togglePlaceLabelsLayer()" class="px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 text-xs font-semibold shadow-md border border-slate-200 flex items-center gap-1.5 transition">
+            <span>🏷️</span>
+            <span id="labelsStatusText">ป้ายชื่อสถานที่: ปิด</span>
+          </button>
+
+          <!-- ปุ่มเปิด/ปิดกริดระยะ 5x5 ม. -->
+          <button type="button" id="btnToggleGrid" onclick="toggleMetricGridLayer()" class="px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 text-xs font-semibold shadow-md border border-slate-200 flex items-center gap-1.5 transition">
+            <span>⊞</span>
+            <span id="gridStatusText">กริดระยะ 5x5ม.: ปิด</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- กล่องคำอธิบายสีระดับความเสี่ยง (0-4) มุมซ้ายล่าง -->
+      <div class="absolute bottom-4 left-3 z-20">
+        <div id="legendExpandedBox" class="hidden mb-2 bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-xl border border-slate-200 w-60 space-y-1.5">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+            <span class="text-xs font-bold text-slate-800">ระดับความเสี่ยงอันตราย (0–4)</span>
+            <button type="button" onclick="toggleRiskLegend()" class="text-slate-400 hover:text-slate-700 text-xs font-bold px-1">✕</button>
+          </div>
+          <div class="space-y-1 text-[11px]">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white shadow-sm"></span> <b>0</b> : ปลอดภัย / ต่ำมาก</span>
+              <span id="legendCount0" class="font-semibold text-slate-500">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-lime-500 inline-block border border-white shadow-sm"></span> <b>1</b> : ความเสี่ยงต่ำ</span>
+              <span id="legendCount1" class="font-semibold text-slate-500">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-400 inline-block border border-white shadow-sm"></span> <b>2</b> : ความเสี่ยงปานกลาง</span>
+              <span id="legendCount2" class="font-semibold text-slate-500">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-orange-500 inline-block border border-white shadow-sm"></span> <b>3</b> : ความเสี่ยงสูง</span>
+              <span id="legendCount3" class="font-semibold text-slate-500">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-rose-600 inline-block border border-white shadow-sm"></span> <b>4</b> : วิกฤต / อันตรายมาก</span>
+              <span id="legendCount4" class="font-semibold text-slate-500">0</span>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" onclick="toggleRiskLegend()" class="bg-white/95 hover:bg-white backdrop-blur px-3 py-1.5 rounded-full shadow-lg border border-slate-200 flex items-center gap-2 text-xs font-bold text-slate-800 transition">
+          <span>🎨 สีระดับเสี่ยง (0–4)</span>
+          <span id="legendTotalBadge" class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">0 ต้น</span>
+          <span id="legendArrowIcon" class="text-[10px] text-slate-500">▲</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- มุมมองที่ 2: รายการต้นไม้ -->
+    <section id="listSection" class="hidden flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 space-y-3">
+      <!-- แถบค้นหาและตัวกรองระดับเสี่ยง -->
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-2">
+        <div class="relative flex-1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+          <input type="text" id="listSearchInput" oninput="renderTreeList()" placeholder="ค้นหารหัสต้นไม้, ชนิดพันธุ์, ผู้สำรวจ หรือหมายเหตุ..." class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+        <select id="listRiskFilter" onchange="renderTreeList()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="all">🎨 ทุกระดับความเสี่ยง (0–4)</option>
+          <option value="4">🔴 ระดับ 4 : วิกฤต / อันตรายมาก</option>
+          <option value="3">🟠 ระดับ 3 : ความเสี่ยงสูง</option>
+          <option value="2">🟡 ระดับ 2 : ความเสี่ยงปานกลาง</option>
+          <option value="1">🟢 ระดับ 1 : ความเสี่ยงต่ำ</option>
+          <option value="0">💚 ระดับ 0 : ปลอดภัย / ต่ำมาก</option>
+        </select>
+      </div>
+
+      <!-- พื้นที่แสดงการ์ดรายการต้นไม้ -->
+      <div id="treeListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-10"></div>
+    </section>
+
+  </main>
+
+  <!-- ==================== MODAL 1: แบบฟอร์มบันทึก/แก้ไขข้อมูลต้นไม้ ==================== -->
+  <div id="treeFormModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+    <div class="bg-white w-full max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
+      <!-- ส่วนหัวฟอร์ม -->
+      <div class="px-4 py-3 bg-emerald-900 text-white flex items-center justify-between">
+        <div>
+          <h2 id="treeModalTitle" class="text-base font-bold">🌳 บันทึกข้อมูลประเมินต้นไม้ใหม่</h2>
+          <p id="treeModalFolderSubtitle" class="text-[11px] text-emerald-200">โฟลเดอร์: โครงการสำรวจทั่วไป</p>
+        </div>
+        <button type="button" onclick="closeTreeFormModal()" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white font-bold">✕</button>
+      </div>
+
+      <!-- เนื้อหาฟอร์มแบบเลื่อนได้ -->
+      <form id="treeAssessmentForm" onsubmit="handleTreeFormSubmit(event)" class="p-4 overflow-y-auto space-y-4 text-xs sm:text-sm">
+        <input type="hidden" id="formTreeId" />
+
+        <!-- หมวด 1: รหัสต้นไม้ & ชนิดพันธุ์ไม้ -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">รหัสต้นไม้ (Code) *</label>
+            <input type="text" id="formTreeCode" required placeholder="เช่น 001" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">ชนิดพันธุ์ไม้ (ชื่อไทย / ชื่อสามัญ) *</label>
+            <input type="text" id="formSpecies" list="thaiTreeSpeciesList" required placeholder="พิมพ์ชื่อพันธุ์ไม้ เช่น จามจุรี, หางนกยูงฝรั่ง..." class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+            <datalist id="thaiTreeSpeciesList">
+              <option value="จามจุรี (ก้ามปู)"></option>
+              <option value="หางนกยูงฝรั่ง"></option>
+              <option value="ประดู่บ้าน"></option>
+              <option value="พะยูง"></option>
+              <option value="ยางนา"></option>
+              <option value="ตะเคียนทอง"></option>
+              <option value="นนทรี"></option>
+              <option value="อินทนิลน้ำ"></option>
+              <option value="ทองกวาว"></option>
+              <option value="ชงโค"></option>
+              <option value="กัลปพฤกษ์"></option>
+              <option value="ราชพฤกษ์ (คูน)"></option>
+              <option value="ตีนเป็ดน้ำ"></option>
+              <option value="พญาสัตบรรณ"></option>
+              <option value="มะขาม"></option>
+              <option value="ไทรย้อยใบแหลม"></option>
+              <option value="โพธิ์"></option>
+              <option value="หูกระจง"></option>
+              <option value="ลั่นทม (ลีลาวดี)"></option>
+              <option value="ปีบ"></option>
+              <option value="สัก"></option>
+              <option value="เหลืองปรีดียาธร"></option>
+              <option value="แคนา"></option>
+              <option value="กระถินณรงค์"></option>
+              <option value="ยูคาลิปตัส"></option>
+              <option value="พิกุล"></option>
+              <option value="บุนนาค"></option>
+              <option value="สารภี"></option>
+              <option value="จำปี"></option>
+              <option value="มะม่วง"></option>
+              <option value="ขนุน"></option>
+              <option value="มะพร้าว"></option>
+              <option value="ปาล์มน้ำมัน"></option>
+              <option value="ปาล์มขวด"></option>
+              <option value="หมากนวล"></option>
+            </datalist>
+          </div>
+        </div>
+
+        <!-- หมวด 2: พิกัดภูมิศาสตร์ WGS84 และ UTM แบบเรียลไทม์ -->
+        <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">📍 พิกัดตำแหน่งต้นไม้ (WGS84 & UTM)</span>
+            <span id="formUtmZoneBadge" class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 text-[11px] font-mono font-bold">Zone 47N</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-500">Latitude (ละติจูด)</label>
+              <input type="number" step="any" id="formLat" oninput="updateUtmFromLatLngInputs()" required class="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-xs bg-white" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500">Longitude (ลองจิจูด)</label>
+              <input type="number" step="any" id="formLng" oninput="updateUtmFromLatLngInputs()" required class="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-xs bg-white" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500">UTM Easting (mE)</label>
+              <input type="text" id="formUtmEasting" readonly class="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 font-mono text-xs bg-slate-100 text-slate-700" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-500">UTM Northing (mN)</label>
+              <input type="text" id="formUtmNorthing" readonly class="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 font-mono text-xs bg-slate-100 text-slate-700" />
+            </div>
+          </div>
+        </div>
+
+        <!-- หมวด 3: ขนาดมิติต้นไม้ (GBH <-> DBH อัตโนมัติ, ความสูง, รัศมีทรงพุ่ม) -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">เส้นรอบวง GBH (ซม.)</label>
+            <input type="number" step="0.1" min="0" id="formGbh" oninput="syncDbhFromGbh()" placeholder="0.0" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">เส้นผ่านศูนย์กลาง DBH (ซม.)</label>
+            <input type="number" step="0.1" min="0" id="formDbh" oninput="syncGbhFromDbh()" placeholder="คำนวณอัตโนมัติ" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-emerald-50/40 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ความสูง (ม.)</label>
+            <input type="number" step="0.1" min="0" id="formHeight" placeholder="เช่น 12.5" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">รัศมีทรงพุ่ม (ม.)</label>
+            <input type="number" step="0.1" min="0" id="formCanopy" placeholder="เช่น 4.5" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+          </div>
+        </div>
+
+        <!-- หมวด 4: ระดับความเสี่ยงอันตราย (Risk Score 0-4) -->
+        <div class="space-y-1.5">
+          <label class="block text-xs font-bold text-slate-700">⚠️ ระดับความเสี่ยงอันตราย (Risk Score 0–4) *</label>
+          <div class="grid grid-cols-5 gap-1.5" id="riskButtonsGroup">
+            <button type="button" data-risk="0" onclick="selectRiskScore(0)" class="risk-opt-btn py-2 rounded-xl border-2 font-bold text-xs sm:text-sm transition">0</button>
+            <button type="button" data-risk="1" onclick="selectRiskScore(1)" class="risk-opt-btn py-2 rounded-xl border-2 font-bold text-xs sm:text-sm transition">1</button>
+            <button type="button" data-risk="2" onclick="selectRiskScore(2)" class="risk-opt-btn py-2 rounded-xl border-2 font-bold text-xs sm:text-sm transition">2</button>
+            <button type="button" data-risk="3" onclick="selectRiskScore(3)" class="risk-opt-btn py-2 rounded-xl border-2 font-bold text-xs sm:text-sm transition">3</button>
+            <button type="button" data-risk="4" onclick="selectRiskScore(4)" class="risk-opt-btn py-2 rounded-xl border-2 font-bold text-xs sm:text-sm transition">4</button>
+          </div>
+          <div id="riskDescriptionBanner" class="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+            ระดับ 0 : ปลอดภัย / ความเสี่ยงต่ำมาก — โครงสร้างแข็งแรง ไม่พบจุดบกพร่องสำคัญ
+          </div>
+        </div>
+
+        <!-- หมวด 5: เป้าหมายที่อาจได้รับผลกระทบ (เลือกคะแนนแยกอิสระครบ 3 หัวข้อย่อย) -->
+        <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800">🎯 เป้าหมายที่อาจได้รับผลกระทบ (คะแนน 0–4 แยกอิสระ)</span>
+            <span class="text-[11px] text-slate-500">เลือกได้ครบทุกประเภท</span>
+          </div>
+
+          <!-- 5.1 มนุษย์ (Human) -->
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-slate-700">🚶 มนุษย์ (Human)</div>
+            <div id="targetGroupHuman" class="grid grid-cols-6 gap-1"></div>
+          </div>
+
+          <!-- 5.2 ยานพาหนะ (Vehicle) -->
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-slate-700">🚗 ยานพาหนะ (Vehicle)</div>
+            <div id="targetGroupVehicle" class="grid grid-cols-6 gap-1"></div>
+          </div>
+
+          <!-- 5.3 ทรัพย์สิน/อาคาร (Property) -->
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-slate-700">🏛️ ทรัพย์สิน/อาคาร (Property)</div>
+            <div id="targetGroupProperty" class="grid grid-cols-6 gap-1"></div>
+          </div>
+        </div>
+
+        <!-- หมวด 6: อัตราการเข้าใช้พื้นที่ (Occupancy Rating 1-4) & แนวทางจัดการ -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">👥 อัตราการเข้าใช้พื้นที่ (Occupancy 1–4)</label>
+            <select id="formOccupancy" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              <option value="1">1 — น้อยมาก (Rare: นานๆ ครั้ง)</option>
+              <option value="2" selected>2 — บางครั้ง (Occasional: มีคนผ่านเป็นช่วง)</option>
+              <option value="3">3 — บ่อยครั้ง (Frequent: ใช้งานประจำทุกวัน)</option>
+              <option value="4">4 — ตลอดเวลา (Constant: พื้นที่สัญจรหนาแน่น)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">🛠️ แนวทาง / ระยะเวลาจัดการ</label>
+            <select id="formAction" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              <option value="เฝ้าระวังตามรอบปกติ (6-12 เดือน)">เฝ้าระวังตามรอบปกติ (6–12 เดือน)</option>
+              <option value="ตัดแต่งกิ่งแห้ง/กิ่งยื่น (ภายใน 30 วัน)">ตัดแต่งกิ่งแห้ง/กิ่งยื่น (ภายใน 30 วัน)</option>
+              <option value="ลดขนาดทรงพุ่ม/ค้ำยัน (ภายใน 7 วัน)">ลดขนาดทรงพุ่ม/ค้ำยัน (ภายใน 7 วัน)</option>
+              <option value="กั้นเขตอันตราย/โค่นย้ายทันที (เร่งด่วน 24 ชม.)">กั้นเขตอันตราย/โค่นย้ายทันที (เร่งด่วน 24 ชม.)</option>
+              <option value="ตรวจสอบระบบรากและโพรงลำต้นเพิ่มเติม">ตรวจสอบระบบรากและโพรงลำต้นเพิ่มเติม</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- หมวด 7: หมายเหตุอาการภาคสนาม & แนบรูปถ่ายพร้อมบีบอัดอัตโนมัติ -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">📝 หมายเหตุ / อาการผิดปกติที่พบ</label>
+            <textarea id="formNotes" rows="3" placeholder="เช่น พบโพรงโคนต้นด้านทิศเหนือ, กิ่งแห้งค้างทรงพุ่ม, รากโผล่..." class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">📷 รูปถ่ายต้นไม้ (บีบอัดอัตโนมัติ)</label>
+            <label class="flex flex-col items-center justify-center w-full h-24 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50 cursor-pointer transition overflow-hidden relative">
+              <input type="file" id="formPhotoInput" accept="image/*" capture="environment" onchange="handlePhotoUpload(event)" class="hidden" />
+              <div id="photoPlaceholder" class="text-center p-2">
+                <span class="text-xl block">📸</span>
+                <span class="text-[11px] font-semibold text-emerald-800">แตะเพื่อถ่ายภาพ หรือเลือกรูป</span>
+              </div>
+              <img id="photoPreviewImg" src="" alt="ตัวอย่างรูปถ่าย" class="hidden w-full h-full object-cover" />
+            </label>
+            <button type="button" id="btnRemovePhoto" onclick="clearFormPhoto()" class="hidden mt-1 text-[11px] text-rose-600 font-semibold hover:underline">🗑️ ลบรูปถ่ายนี้</button>
+          </div>
+        </div>
+
+        <!-- ปุ่มบันทึก / ยกเลิก -->
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeTreeFormModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm transition">
+            ยกเลิก
+          </button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-md transition flex items-center gap-1.5">
+            <span>💾</span>
+            <span>บันทึกข้อมูลต้นไม้</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 2: ตั้งค่า Cloud & Google Apps Script ==================== -->
+  <div id="cloudModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
+    <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="text-sm sm:text-base font-bold flex items-center gap-2"><span>⚙️</span> ตั้งค่าฐานข้อมูลทีม (Google Cloud Sync)</h3>
+        <button type="button" onclick="closeCloudModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">✕</button>
+      </div>
+
+      <div class="p-4 overflow-y-auto space-y-3 text-xs sm:text-sm">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Google Apps Script Web App URL</label>
+          <input type="url" id="cloudUrlInput" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="testCloudConnection()" class="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition">
+            <span>🔌</span> ทดสอบการเชื่อมต่อ
+          </button>
+          <button type="button" onclick="restoreDefaultCloudUrl()" class="px-3 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold text-xs flex items-center gap-1 transition">
+            <span>🔄</span> คืนค่า URL เริ่มต้น
+          </button>
+          <button type="button" onclick="saveCloudUrl()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition ml-auto">
+            <span>💾</span> บันทึก URL
+          </button>
+        </div>
+
+        <!-- ผลลัพธ์การทดสอบการเชื่อมต่อ -->
+        <div id="cloudTestResultBox" class="hidden p-3 rounded-2xl text-xs border"></div>
+
+        <!-- โค้ด Backend Code.gs สำรองให้คัดลอก -->
+        <div class="pt-2 border-t border-slate-200 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">📜 โค้ด Backend (Code.gs) สำหรับ Google Apps Script</span>
+            <button type="button" onclick="copyBackendCode()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-semibold">
+              📋 คัดลอกโค้ด Code.gs
+            </button>
+          </div>
+          <textarea id="backendCodePreview" readonly rows="6" class="w-full p-2.5 rounded-xl bg-slate-900 text-emerald-300 font-mono text-[11px] leading-relaxed"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 3: ตั้งชื่อผู้สำรวจ (Surveyor Profile) ==================== -->
+  <div id="surveyorModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 bg-indigo-900 text-white flex items-center justify-between">
+        <h3 class="text-sm sm:text-base font-bold">👤 ระบุชื่อผู้สำรวจภาคสนาม</h3>
+        <button type="button" onclick="closeSurveyorModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">✕</button>
+      </div>
+      <div class="p-4 space-y-3 text-xs sm:text-sm">
+        <p class="text-slate-600 text-xs">ชื่อนี้จะถูกบันทึกกำกับต้นไม้ทุกต้นที่คุณสำรวจ เพื่อให้หัวหน้าทีมตรวจสอบและกรองข้อมูลแยกตามผู้สำรวจได้</p>
+        <input type="text" id="surveyorNameInput" placeholder="กรอกชื่อหรือชื่อเล่น เช่น กานต์, สมชาย..." class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+        <div id="recentSurveyorsBox" class="flex flex-wrap gap-1.5"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeSurveyorModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs">ยกเลิก</button>
+          <button type="button" onclick="saveSurveyorName()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow">บันทึกชื่อผู้สำรวจ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 4: สร้าง / แก้ไขชื่อโฟลเดอร์โครงการ ==================== -->
+  <div id="folderModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 bg-emerald-900 text-white flex items-center justify-between">
+        <h3 id="folderModalTitle" class="text-sm sm:text-base font-bold">📁 สร้างโฟลเดอร์โครงการใหม่</h3>
+        <button type="button" onclick="closeFolderModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">✕</button>
+      </div>
+      <div class="p-4 space-y-3 text-xs sm:text-sm">
+        <input type="hidden" id="folderModalMode" value="create" />
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อโครงการ / พื้นที่สำรวจ *</label>
+          <input type="text" id="folderNameInput" placeholder="เช่น สวนสาธารณะ, อาคารเรียน 1, แนวถนนหลัก..." class="w-full px-3 py-2.5 rounded-xl border border-slate-300 font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeFolderModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs">ยกเลิก</button>
+          <button type="button" onclick="saveFolderModal()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow">บันทึกโฟลเดอร์</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 5: ส่งออกข้อมูล (CSV, GeoJSON, KML, ZIP + รูปถ่าย) ==================== -->
+  <div id="exportModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 bg-amber-500 text-slate-950 flex items-center justify-between">
+        <h3 class="text-sm sm:text-base font-bold flex items-center gap-1.5"><span>📤</span> ส่งออกข้อมูลสำรวจภาคสนาม</h3>
+        <button type="button" onclick="closeExportModal()" class="w-8 h-8 rounded-full bg-black/10 hover:bg-black/20 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div class="p-4 space-y-3 text-xs sm:text-sm">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">ขอบเขตข้อมูลที่ต้องการส่งออก</label>
+          <select id="exportScopeSelect" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold bg-slate-50">
+            <option value="current">📁 เฉพาะโฟลเดอร์ปัจจุบัน</option>
+            <option value="all">🗂️ ทุกโฟลเดอร์โครงการทั้งหมด</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+          <button type="button" onclick="exportDataAs('csv')" class="p-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100 text-left transition flex items-start gap-2.5">
+            <span class="text-2xl">📊</span>
+            <div>
+              <div class="font-bold text-emerald-950">CSV (Excel ภาษาไทย)</div>
+              <div class="text-[11px] text-emerald-700">UTF-8 BOM เปิดใน Excel ไม่เพี้ยน</div>
+            </div>
+          </button>
+
+          <button type="button" onclick="exportDataAs('zip')" class="p-3 rounded-2xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-left transition flex items-start gap-2.5">
+            <span class="text-2xl">🗜️</span>
+            <div>
+              <div class="font-bold text-amber-950">ZIP + รูปถ่ายทั้งหมด</div>
+              <div class="text-[11px] text-amber-800">รวม CSV + GeoJSON + โฟลเดอร์รูป</div>
+            </div>
+          </button>
+
+          <button type="button" onclick="exportDataAs('geojson')" class="p-3 rounded-2xl border border-sky-200 bg-sky-50/60 hover:bg-sky-100 text-left transition flex items-start gap-2.5">
+            <span class="text-2xl">🌐</span>
+            <div>
+              <div class="font-bold text-sky-950">GeoJSON (.geojson)</div>
+              <div class="text-[11px] text-sky-700">สำหรับโปรแกรม QGIS / ArcGIS</div>
+            </div>
+          </button>
+
+          <button type="button" onclick="exportDataAs('kml')" class="p-3 rounded-2xl border border-purple-200 bg-purple-50/60 hover:bg-purple-100 text-left transition flex items-start gap-2.5">
+            <span class="text-2xl">🌍</span>
+            <div>
+              <div class="font-bold text-purple-950">KML (.kml)</div>
+              <div class="text-[11px] text-purple-700">เปิดดูหมุดสีใน Google Earth</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 6: กล่องยืนยันการลบ (แทน confirm() มาตรฐาน) ==================== -->
+  <div id="confirmDialogModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 p-5 space-y-4">
+      <div class="space-y-1">
+        <h3 id="confirmDialogTitle" class="text-base font-bold text-slate-900">ยืนยันการทำรายการ</h3>
+        <p id="confirmDialogMessage" class="text-xs sm:text-sm text-slate-600">คุณต้องการดำเนินการนี้ใช่หรือไม่?</p>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeConfirmDialog()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs">ยกเลิก</button>
+        <button type="button" id="confirmDialogOkBtn" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow">ยืนยันลบข้อมูล</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 7: ดูรูปถ่ายขนาดใหญ่ (Lightbox) ==================== -->
+  <div id="photoLightboxModal" onclick="closePhotoLightbox()" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="relative max-w-3xl w-full flex flex-col items-center">
+      <img id="lightboxFullImg" src="" alt="รูปถ่ายต้นไม้ขนาดเต็ม" class="max-h-[82vh] w-auto rounded-2xl shadow-2xl border border-white/20" />
+      <p id="lightboxCaptionText" class="mt-2 text-white text-xs sm:text-sm font-semibold bg-black/60 px-3 py-1 rounded-full"></p>
+    </div>
+  </div>
+
+  <!-- ==================== กล่องข้อความแจ้งเตือน (Toast Notification) ==================== -->
+  <div id="toastContainer" class="fixed bottom-4 right-3 left-3 sm:left-auto sm:w-96 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+  <script>
+    /**
+     * 1. ค่าคงที่และ URL เริ่มต้นของฐานข้อมูล Google Apps Script
+     */
+    const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzadOoa0gE7sNqypQuM16CUJVhcgo2dLhwh_UcL2Ups4EBuzlPCILvCX0f_wsSMvnGA/exec";
+    const SCRIPT_URL_VERSION = "v2_AKfycbzadOoa0";
+
+    const STORAGE_KEYS = {
+      FOLDERS: "arborist_folders_v2",
+      TREES: "arborist_trees_v2",
+      ACTIVE_FOLDER: "arborist_active_folder_v2",
+      SURVEYOR: "arborist_surveyor_name_v2",
+      SCRIPT_URL: "arborist_cloud_url_v2",
+      SCRIPT_VER: "arborist_cloud_ver_v2",
+      SYNC_QUEUE: "arborist_sync_queue_v2"
+    };
+
+    const RISK_CONFIG = {
+      0: { label: "ปลอดภัย / ต่ำมาก", color: "#10b981", bgClass: "bg-emerald-500", textClass: "text-emerald-800", bannerBg: "bg-emerald-50 border-emerald-200", desc: "ระดับ 0 : ปลอดภัย / ความเสี่ยงต่ำมาก — โครงสร้างแข็งแรง ไม่พบจุดบกพร่องสำคัญ" },
+      1: { label: "ความเสี่ยงต่ำ", color: "#84cc16", bgClass: "bg-lime-500", textClass: "text-lime-900", bannerBg: "bg-lime-50 border-lime-200", desc: "ระดับ 1 : ความเสี่ยงต่ำ — พบจุดบกพร่องเล็กน้อย ควรเฝ้าระวังตามรอบปกติ" },
+      2: { label: "ความเสี่ยงปานกลาง", color: "#facc15", bgClass: "bg-amber-400", textClass: "text-amber-950", bannerBg: "bg-amber-50 border-amber-200", desc: "ระดับ 2 : ความเสี่ยงปานกลาง — ควรวางแผนตัดแต่งกิ่งหรือบำรุงรักษาตามกำหนด" },
+      3: { label: "ความเสี่ยงสูง", color: "#f97316", bgClass: "bg-orange-500", textClass: "text-orange-950", bannerBg: "bg-orange-50 border-orange-200", desc: "ระดับ 3 : ความเสี่ยงสูง — มีโอกาสกิ่งฉีกหักหรือเอนล้ม ควรรีบดำเนินการจัดการ" },
+      4: { label: "วิกฤต / อันตรายมาก", color: "#e11d48", bgClass: "bg-rose-600", textClass: "text-rose-950", bannerBg: "bg-rose-50 border-rose-200", desc: "ระดับ 4 : วิกฤต / อันตรายมาก — เสี่ยงล้มทับเป้าหมายสูง ต้องกั้นเขตและแก้ไขเร่งด่วน" }
+    };
+
+    /**
+     * 2. สถานะของแอปพลิเคชัน (Application State)
+     */
+    let appState = {
+      folders: [],
+      trees: [],
+      activeFolderId: "default_folder",
+      teamFilter: "ALL",
+      surveyorName: "",
+      scriptUrl: DEFAULT_SCRIPT_URL,
+      syncQueue: [],
+      isSyncing: false,
+      activeTab: "map",
+      headerCollapsed: false,
+      mapToolsVisible: true,
+      canopyVisible: true,      // ค่าเริ่มต้น: เปิดแสดงวงกลมรัศมีทรงพุ่ม
+      isSatelliteBase: true,
+      labelsVisible: false,
+      gridVisible: false,
+      legendExpanded: false,
+      selectedRisk: 0,
+      targetHuman: null,
+      targetVehicle: null,
+      targetProperty: null,
+      currentFormPhoto: "",
+      movingTreeId: null,
+      movingTempLatLng: null
+    };
+
+    // ตัวแปรสำหรับ Leaflet Map และเลเยอร์ต่างๆ
+    let map = null;
+    let esriSatelliteLayer = null;
+    let osmStreetLayer = null;
+    let esriLabelsLayer = null;
+    let metricGridLayer = null;
+    let markersLayerGroup = null;
+    let canopyLayerGroup = null;
+    let userGpsMarker = null;
+    let userGpsCircle = null;
+    let moveDragMarker = null;
+    let confirmCallback = null;
+    let syncTimerId = null;
+
+    /**
+     * 3. เริ่มต้นระบบเมื่อโหลดหน้าเว็บเสร็จสมบูรณ์
+     */
+    window.addEventListener("DOMContentLoaded", () => {
+      initStorageAndMigration();
+      initTargetSelectorButtons();
+      renderBackendCodePreview();
+      initLeafletMap();
+      initSwipeAndResizeObservers();
+      renderAllUI();
+      startStaggeredCloudSync();
+    });
+
+    /**
+     * โหลดข้อมูลจาก LocalStorage และอัปเดต URL ของ Apps Script อัตโนมัติหากเป็นเวอร์ชันเก่า
+     */
+    function initStorageAndMigration() {
+      try {
+        // ตรวจสอบและอัปเดต URL เวอร์ชันใหม่ให้เครื่องที่เคยเปิดเว็บเก่าอัตโนมัติ
+        const savedVer = localStorage.getItem(STORAGE_KEYS.SCRIPT_VER);
+        const savedUrl = localStorage.getItem(STORAGE_KEYS.SCRIPT_URL);
+        if (savedVer !== SCRIPT_URL_VERSION || !savedUrl || savedUrl.includes("AKfycbx_OLD")) {
+          appState.scriptUrl = DEFAULT_SCRIPT_URL;
+          localStorage.setItem(STORAGE_KEYS.SCRIPT_URL, DEFAULT_SCRIPT_URL);
+          localStorage.setItem(STORAGE_KEYS.SCRIPT_VER, SCRIPT_URL_VERSION);
+        } else {
+          appState.scriptUrl = savedUrl;
+        }
+
+        // โหลดรายชื่อโฟลเดอร์
+        const rawFolders = localStorage.getItem(STORAGE_KEYS.FOLDERS);
+        appState.folders = rawFolders ? JSON.parse(rawFolders) : [];
+        if (!Array.isArray(appState.folders) || appState.folders.length === 0) {
+          appState.folders = [{ id: "default_folder", name: "โครงการสำรวจทั่วไป", updatedAt: new Date().toISOString() }];
+        }
+
+        // โหลดโฟลเดอร์ที่เลือกอยู่
+        const savedActiveFolder = localStorage.getItem(STORAGE_KEYS.ACTIVE_FOLDER);
+        if (savedActiveFolder && appState.folders.some(f => f.id === savedActiveFolder)) {
+          appState.activeFolderId = savedActiveFolder;
+        } else {
+          appState.activeFolderId = appState.folders[0].id;
+        }
+
+        // โหลดข้อมูลต้นไม้
+        const rawTrees = localStorage.getItem(STORAGE_KEYS.TREES);
+        appState.trees = rawTrees ? JSON.parse(rawTrees) : [];
+
+        // โหลดชื่อผู้สำรวจ
+        appState.surveyorName = localStorage.getItem(STORAGE_KEYS.SURVEYOR) || "";
+
+        // โหลดคิวออฟไลน์
+        const rawQueue = localStorage.getItem(STORAGE_KEYS.SYNC_QUEUE);
+        appState.syncQueue = rawQueue ? JSON.parse(rawQueue) : [];
+      } catch (err) {
+        console.error("Storage init error:", err);
+      }
+    }
+
+    function persistLocalState() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(appState.folders));
+        localStorage.setItem(STORAGE_KEYS.TREES, JSON.stringify(appState.trees));
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_FOLDER, appState.activeFolderId);
+        localStorage.setItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify(appState.syncQueue));
+      } catch (err) {
+        if (err && err.name === "QuotaExceededError") {
+          showToast("⚠️ พื้นที่จัดเก็บในเครื่องเต็ม แนะนำให้ส่งออก ZIP และลบรูปเก่าบางส่วน", "warning");
+        }
+      }
+    }
+
+    /**
+     * 4. ตั้งค่าแผนที่ Leaflet ดาวเทียมความละเอียดสูง + ระบบป้องกันหน้าจอขาว/ดำ 100%
+     */
+    function initLeafletMap() {
+      // พิกัดเริ่มต้น: กรุงเทพมหานคร / ม.เกษตรศาสตร์ (13.8476, 100.5696)
+      map = L.map("map", {
+        center: [13.8476, 100.5696],
+        zoom: 17,
+        maxZoom: 22,
+        zoomControl: false
+      });
+
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+
+      // เลเยอร์ภาพดาวเทียม Esri World Imagery (maxNativeZoom: 18 ขยายได้ถึง 22 โดยไม่ขาว)
+      esriSatelliteLayer = L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution: "Tiles &copy; Esri",
+          maxNativeZoom: 18,
+          maxZoom: 22
+        }
+      );
+
+      // เลเยอร์แผนที่ถนน OpenStreetMap สำรองอัตโนมัติ
+      osmStreetLayer = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+          attribution: "&copy; OpenStreetMap",
+          maxNativeZoom: 19,
+          maxZoom: 22
+        }
+      );
+
+      // เลเยอร์ป้ายชื่อสถานที่ (Reference Places)
+      esriLabelsLayer = L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+        {
+          maxNativeZoom: 18,
+          maxZoom: 22,
+          opacity: 0.9
+        }
+      );
+
+      // ระบบตรวจจับ Error การโหลดภาพดาวเทียม -> สลับไปแผนที่ถนนอัตโนมัติ
+      let tileErrorCount = 0;
+      esriSatelliteLayer.on("tileerror", () => {
+        tileErrorCount++;
+        if (tileErrorCount >= 6 && appState.isSatelliteBase) {
+          tileErrorCount = 0;
+          appState.isSatelliteBase = false;
+          map.removeLayer(esriSatelliteLayer);
+          osmStreetLayer.addTo(map);
+          updateBaseMapButtonUI();
+          showToast("🗺️ สลับเป็นแผนที่ถนนอัตโนมัติเนื่องจากโหลดภาพดาวเทียมไม่สำเร็จ", "warning");
+        }
+      });
+
+      esriSatelliteLayer.addTo(map);
+
+      // สร้างกลุ่มเลเยอร์วงกลมทรงพุ่มและหมุดต้นไม้
+      canopyLayerGroup = L.layerGroup().addTo(map);
+      markersLayerGroup = L.layerGroup().addTo(map);
+
+      // สร้างเลเยอร์กริดระยะ 5x5 เมตรแบบ Dynamic
+      metricGridLayer = L.layerGroup();
+      map.on("moveend zoomend", () => {
+        if (appState.gridVisible) {
+          drawMetric5x5Grid();
+        }
+      });
+
+      // เหตุการณ์แตะบนแผนที่: ปักหมุดต้นไม้ใหม่ หรือย้ายจุดหากอยู่ในโหมดย้ายตำแหน่ง
+      map.on("click", (e) => {
+        if (appState.movingTreeId) {
+          updateMovingPosition(e.latlng.lat, e.latlng.lng);
+          return;
+        }
+        openCreateTreeModalAt(e.latlng.lat, e.latlng.lng);
+      });
+
+      // หากมีข้อมูลต้นไม้อยู่แล้ว ให้จัดกึ่งกลางแผนที่ไปยังกลุ่มต้นไม้ในโฟลเดอร์
+      const folderTrees = getFilteredTrees();
+      if (folderTrees.length > 0) {
+        const bounds = L.latLngBounds(folderTrees.map(t => [t.lat, t.lng]));
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
+      }
+    }
+
+    /**
+     * คำนวณความสูงของพื้นที่แผนที่เป็นพิกเซลจริง เพื่อป้องกันแผนที่ยุบตัวหรือเกิดหน้าจอขาว
+     */
+    function syncViewportHeights() {
+      const mapSection = document.getElementById("mapSection");
+      if (!mapSection || appState.activeTab !== "map") return;
+
+      const rect = mapSection.getBoundingClientRect();
+      const availableHeight = Math.max(300, window.innerHeight - rect.top);
+      mapSection.style.height = `${availableHeight}px`;
+
+      if (map) {
+        map.invalidateSize({ animate: false });
+      }
+    }
+
+    function initSwipeAndResizeObservers() {
+      syncViewportHeights();
+      window.addEventListener("resize", syncViewportHeights);
+      window.addEventListener("orientationchange", () => setTimeout(syncViewportHeights, 250));
+
+      // ติดตามการเปลี่ยนแปลงความสูงของ Header ด้วย ResizeObserver
+      const headerEl = document.getElementById("collapsibleHeader");
+      if (window.ResizeObserver && headerEl) {
+        const ro = new ResizeObserver(() => syncViewportHeights());
+        ro.observe(headerEl);
+      }
+
+      // รองรับการปัดนิ้วขึ้น/ลง (Touch Swipe) บนแถบหัวและแถบจับ Sticky
+      let touchStartY = 0;
+      const swipeTargets = [document.getElementById("collapsibleHeader"), document.getElementById("stickyHandleBar")];
+      swipeTargets.forEach(el => {
+        if (!el) return;
+        el.addEventListener("touchstart", (e) => {
+          touchStartY = e.changedTouches[0].screenY;
+        }, { passive: true });
+
+        el.addEventListener("touchend", (e) => {
+          const deltaY = e.changedTouches[0].screenY - touchStartY;
+          if (deltaY < -35 && !appState.headerCollapsed) {
+            setHeaderCollapsed(true);
+          } else if (deltaY > 35 && appState.headerCollapsed) {
+            setHeaderCollapsed(false);
+          }
+        }, { passive: true });
+      });
+    }
+
+    function toggleHeaderCollapse() {
+      setHeaderCollapsed(!appState.headerCollapsed);
+    }
+
+    function setHeaderCollapsed(collapsed) {
+      appState.headerCollapsed = collapsed;
+      const header = document.getElementById("collapsibleHeader");
+      const icon = document.getElementById("toggleHeaderIcon");
+      const text = document.getElementById("toggleHeaderText");
+
+      if (collapsed) {
+        header.style.maxHeight = "0px";
+        header.style.opacity = "0";
+        icon.textContent = "▼";
+        text.textContent = "เลื่อนลง";
+      } else {
+        header.style.maxHeight = "300px";
+        header.style.opacity = "1";
+        icon.textContent = "▲";
+        text.textContent = "เลื่อนขึ้น";
+      }
+      setTimeout(syncViewportHeights, 220);
+    }
+
+    /**
+     * 5. ปุ่มควบคุมเลเยอร์บนแผนที่
+     */
+    function toggleMapToolsMenu() {
+      appState.mapToolsVisible = !appState.mapToolsVisible;
+      const container = document.getElementById("mapToolsContainer");
+      const icon = document.getElementById("mapToolsToggleIcon");
+      const text = document.getElementById("mapToolsToggleText");
+
+      if (appState.mapToolsVisible) {
+        container.classList.remove("hidden");
+        icon.textContent = "👁️";
+        text.textContent = "ซ่อนเครื่องมือ";
+      } else {
+        container.classList.add("hidden");
+        icon.textContent = "🛠️";
+        text.textContent = "เครื่องมือ";
+      }
+    }
+
+    function toggleCanopyLayer() {
+      appState.canopyVisible = !appState.canopyVisible;
+      const btn = document.getElementById("btnToggleCanopy");
+      const txt = document.getElementById("canopyStatusText");
+
+      if (appState.canopyVisible) {
+        btn.classList.remove("bg-white/95", "text-slate-800");
+        btn.classList.add("bg-emerald-600", "text-white");
+        txt.textContent = "ขนาดทรงพุ่ม: เปิด";
+      } else {
+        btn.classList.add("bg-white/95", "text-slate-800");
+        btn.classList.remove("bg-emerald-600", "text-white");
+        txt.textContent = "ขนาดทรงพุ่ม: ปิด";
+      }
+      renderMapMarkersAndCanopies();
+    }
+
+    function toggleBaseMapLayer() {
+      appState.isSatelliteBase = !appState.isSatelliteBase;
+      if (appState.isSatelliteBase) {
+        map.removeLayer(osmStreetLayer);
+        esriSatelliteLayer.addTo(map);
+      } else {
+        map.removeLayer(esriSatelliteLayer);
+        osmStreetLayer.addTo(map);
+      }
+      updateBaseMapButtonUI();
+    }
+
+    function updateBaseMapButtonUI() {
+      const icon = document.getElementById("baseMapIcon");
+      const text = document.getElementById("baseMapText");
+      if (appState.isSatelliteBase) {
+        icon.textContent = "🛰️";
+        text.textContent = "ภาพดาวเทียม";
+      } else {
+        icon.textContent = "🗺️";
+        text.textContent = "แผนที่ถนน";
+      }
+    }
+
+    function togglePlaceLabelsLayer() {
+      appState.labelsVisible = !appState.labelsVisible;
+      const txt = document.getElementById("labelsStatusText");
+      if (appState.labelsVisible) {
+        esriLabelsLayer.addTo(map);
+        txt.textContent = "ป้ายชื่อสถานที่: เปิด";
+      } else {
+        map.removeLayer(esriLabelsLayer);
+        txt.textContent = "ป้ายชื่อสถานที่: ปิด";
+      }
+    }
+
+    function toggleMetricGridLayer() {
+      appState.gridVisible = !appState.gridVisible;
+      const txt = document.getElementById("gridStatusText");
+      if (appState.gridVisible) {
+        metricGridLayer.addTo(map);
+        drawMetric5x5Grid();
+        txt.textContent = "กริดระยะ 5x5ม.: เปิด";
+      } else {
+        metricGridLayer.clearLayers();
+        map.removeLayer(metricGridLayer);
+        txt.textContent = "กริดระยะ 5x5ม.: ปิด";
+      }
+    }
+
+    function drawMetric5x5Grid() {
+      metricGridLayer.clearLayers();
+      const zoom = map.getZoom();
+      if (zoom < 18) {
+        showToast("🔍 กรุณาซูมเข้าใกล้ระดับ 18 ขึ้นไปเพื่อแสดงเส้นกริด 5x5 เมตร", "info");
+        return;
+      }
+      const bounds = map.getBounds();
+      const center = map.getCenter();
+      // คำนวณระยะ 5 เมตรเป็นองศาละติจูดและลองจิจูด ณ ตำแหน่งปัจจุบัน
+      const dLat = 5 / 111320;
+      const dLng = 5 / (111320 * Math.cos((center.lat * Math.PI) / 180));
+
+      const startLat = Math.floor(bounds.getSouth() / dLat) * dLat;
+      const endLat = bounds.getNorth();
+      const startLng = Math.floor(bounds.getWest() / dLng) * dLng;
+      const endLng = bounds.getEast();
+
+      let lineCount = 0;
+      for (let lat = startLat; lat <= endLat && lineCount < 160; lat += dLat) {
+        L.polyline([[lat, bounds.getWest()], [lat, bounds.getEast()]], {
+          color: "#ffffff",
+          weight: 1,
+          opacity: 0.45,
+          interactive: false
+        }).addTo(metricGridLayer);
+        lineCount++;
+      }
+      for (let lng = startLng; lng <= endLng && lineCount < 320; lng += dLng) {
+        L.polyline([[bounds.getSouth(), lng], [bounds.getNorth(), lng]], {
+          color: "#ffffff",
+          weight: 1,
+          opacity: 0.45,
+          interactive: false
+        }).addTo(metricGridLayer);
+        lineCount++;
+      }
+    }
+
+    function locateUserGPS() {
+      if (!navigator.geolocation) {
+        showToast("❌ อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง GPS", "error");
+        return;
+      }
+      showToast("📡 กำลังค้นหาพิกัด GPS ปัจจุบัน...", "info");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          if (userGpsMarker) map.removeLayer(userGpsMarker);
+          if (userGpsCircle) map.removeLayer(userGpsCircle);
+
+          userGpsCircle = L.circle([latitude, longitude], {
+            radius: Math.min(accuracy, 50),
+            color: "#0ea5e9",
+            fillColor: "#0ea5e9",
+            fillOpacity: 0.15,
+            weight: 1,
+            interactive: false
+          }).addTo(map);
+
+          userGpsMarker = L.marker([latitude, longitude], {
+            icon: L.divIcon({
+              className: "",
+              html: `<div class="gps-user-dot"></div>`,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            }),
+            interactive: false
+          }).addTo(map);
+
+          map.flyTo([latitude, longitude], 19, { duration: 1.0 });
+          showToast(`📍 พบตำแหน่งของคุณแล้ว (ความคลาดเคลื่อน ±${Math.round(accuracy)} ม.)`, "success");
+        },
+        (err) => {
+          showToast("⚠️ ไม่สามารถดึงพิกัด GPS ได้ กรุณาเปิดสิทธิ์ Location", "warning");
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function toggleRiskLegend() {
+      appState.legendExpanded = !appState.legendExpanded;
+      const box = document.getElementById("legendExpandedBox");
+      const arrow = document.getElementById("legendArrowIcon");
+      if (appState.legendExpanded) {
+        box.classList.remove("hidden");
+        arrow.textContent = "▼";
+      } else {
+        box.classList.add("hidden");
+        arrow.textContent = "▲";
+      }
+    }
+
+    /**
+     * 6. การวาดหมุดต้นไม้ (14x14px) และวงกลมทรงพุ่มบนแผนที่
+     */
+    function getFilteredTrees() {
+      return appState.trees.filter(t => {
+        if (t.deleted) return false;
+        if (t.folderId !== appState.activeFolderId) return false;
+        if (appState.teamFilter !== "ALL") {
+          const surv = (t.surveyor || "ไม่ระบุชื่อ").trim();
+          if (surv !== appState.teamFilter) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderMapMarkersAndCanopies() {
+      if (!markersLayerGroup || !canopyLayerGroup) return;
+      markersLayerGroup.clearLayers();
+      canopyLayerGroup.clearLayers();
+
+      const trees = getFilteredTrees();
+      const riskCounts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
+
+      trees.forEach(tree => {
+        const risk = Number(tree.riskScore ?? 0);
+        if (riskCounts[risk] !== undefined) riskCounts[risk]++;
+        const cfg = RISK_CONFIG[risk] || RISK_CONFIG[0];
+
+        // วาดวงกลมเส้นประแสดงรัศมีทรงพุ่มจริง (interactive: false เพื่อไม่ให้บังการแตะจุดใกล้กัน)
+        const canopyRadius = parseFloat(tree.canopy);
+        if (appState.canopyVisible && canopyRadius > 0) {
+          L.circle([tree.lat, tree.lng], {
+            radius: canopyRadius,
+            color: cfg.color,
+            weight: 1.5,
+            dashArray: "5, 5",
+            fillColor: cfg.color,
+            fillOpacity: 0.14,
+            interactive: false
+          }).addTo(canopyLayerGroup);
+        }
+
+        // วาดจุดหมุดวงกลมสีขนาดเล็ก 14x14px ไม่มีตัวอักษร
+        const marker = L.marker([tree.lat, tree.lng], {
+          icon: L.divIcon({
+            className: "",
+            html: `<div class="tree-dot-marker" style="width:14px;height:14px;background-color:${cfg.color};"></div>`,
+            iconSize: [14, 14],
+            iconAnchor: [7, 7]
+          })
+        });
+
+        marker.bindPopup(() => buildTreePopupHTML(tree), { maxWidth: 290 });
+        marker.addTo(markersLayerGroup);
+      });
+
+      // อัปเดตตัวเลขสรุปในกล่องคำอธิบายสีและแท็บรายการ
+      document.getElementById("legendTotalBadge").textContent = `${trees.length} ต้น`;
+      document.getElementById("tabTreeCount").textContent = trees.length;
+      for (let i = 0; i <= 4; i++) {
+        const el = document.getElementById(`legendCount${i}`);
+        if (el) el.textContent = `${riskCounts[i]} ต้น`;
+      }
+    }
+
+    function buildTreePopupHTML(tree) {
+      const risk = Number(tree.riskScore ?? 0);
+      const cfg = RISK_CONFIG[risk] || RISK_CONFIG[0];
+      const utm = latLngToUtm(tree.lat, tree.lng);
+      const tH = tree.targetHuman !== null && tree.targetHuman !== undefined ? tree.targetHuman : "-";
+      const tV = tree.targetVehicle !== null && tree.targetVehicle !== undefined ? tree.targetVehicle : "-";
+      const tP = tree.targetProperty !== null && tree.targetProperty !== undefined ? tree.targetProperty : "-";
+
+      const photoHtml = tree.photo
+        ? `<div class="mt-2 rounded-xl overflow-hidden border border-slate-200 cursor-pointer" onclick="openPhotoLightbox('${tree.id}')">
+             <img src="${tree.photo}" alt="${escapeHtml(tree.species)}" class="w-full h-28 object-cover" />
+           </div>`
+        : "";
+
+      return `
+        <div class="font-sans text-slate-800">
+          <div class="px-3 py-2 text-white flex items-center justify-between" style="background-color:${cfg.color};">
+            <span class="font-bold text-xs tracking-wide">#${escapeHtml(tree.code)} • ${escapeHtml(tree.species)}</span>
+          </div>
+          <div class="p-3 space-y-1.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-bold px-2 py-0.5 rounded-lg text-[11px] bg-slate-100">เสี่ยงระดับ ${risk} (${cfg.label})</span>
+              <span class="text-[11px] text-slate-500">👤 ${escapeHtml(tree.surveyor || "ไม่ระบุ")}</span>
+            </div>
+            <div class="text-[11px] font-mono text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+              UTM ${utm.zone}: ${utm.easting}E, ${utm.northing}N
+            </div>
+            <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-700">
+              <div>GBH: <b>${tree.gbh || "-"}</b> ซม.</div>
+              <div>DBH: <b>${tree.dbh || "-"}</b> ซม.</div>
+              <div>สูง: <b>${tree.height || "-"}</b> ม.</div>
+              <div>ทรงพุ่ม: <b>${tree.canopy || "-"}</b> ม.</div>
+            </div>
+            <div class="text-[11px] bg-amber-50/80 border border-amber-100 px-2 py-1 rounded-lg text-slate-700">
+              🎯 เป้าหมาย: <b>H:${tH}</b> | <b>V:${tV}</b> | <b>P:${tP}</b>
+            </div>
+            ${photoHtml}
+            <div class="grid grid-cols-3 gap-1.5 pt-2">
+              <button type="button" onclick="openEditTreeModal('${tree.id}')" class="py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] text-center">
+                ✏️ แก้ไข
+              </button>
+              <button type="button" onclick="startMoveTreeMode('${tree.id}')" class="py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] text-center">
+                📍 ย้ายจุด
+              </button>
+              <button type="button" onclick="confirmDeleteTree('${tree.id}')" class="py-1.5 px-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] text-center">
+                🗑️ ลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    /**
+     * 7. โหมดย้ายตำแหน่งต้นไม้ (📍 ย้ายจุด)
+     */
+    function startMoveTreeMode(treeId) {
+      const tree = appState.trees.find(t => t.id === treeId);
+      if (!tree) return;
+
+      map.closePopup();
+      appState.movingTreeId = treeId;
+      appState.movingTempLatLng = { lat: tree.lat, lng: tree.lng };
+
+      document.getElementById("tapHintBanner").classList.add("hidden");
+      document.getElementById("moveModeBanner").classList.remove("hidden");
+      document.getElementById("moveModeTreeTitle").textContent = `#${tree.code} ${tree.species}`;
+      updateMoveBannerCoords(tree.lat, tree.lng);
+
+      if (moveDragMarker) map.removeLayer(moveDragMarker);
+      moveDragMarker = L.marker([tree.lat, tree.lng], {
+        draggable: true,
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="move-target-marker"></div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        })
+      }).addTo(map);
+
+      moveDragMarker.on("drag", (e) => {
+        const pos = e.target.getLatLng();
+        appState.movingTempLatLng = { lat: pos.lat, lng: pos.lng };
+        updateMoveBannerCoords(pos.lat, pos.lng);
+      });
+    }
+
+    function updateMovingPosition(lat, lng) {
+      appState.movingTempLatLng = { lat, lng };
+      if (moveDragMarker) {
+        moveDragMarker.setLatLng([lat, lng]);
+      }
+      updateMoveBannerCoords(lat, lng);
+    }
+
+    function updateMoveBannerCoords(lat, lng) {
+      const utm = latLngToUtm(lat, lng);
+      document.getElementById("moveModeCoordsText").textContent =
+        `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)} | UTM ${utm.zone}: ${utm.easting}E, ${utm.northing}N`;
+    }
+
+    function confirmMoveTree() {
+      const tree = appState.trees.find(t => t.id === appState.movingTreeId);
+      if (tree && appState.movingTempLatLng) {
+        tree.lat = Number(appState.movingTempLatLng.lat.toFixed(7));
+        tree.lng = Number(appState.movingTempLatLng.lng.toFixed(7));
+        const utm = latLngToUtm(tree.lat, tree.lng);
+        tree.utmZone = utm.zone;
+        tree.utmEasting = utm.easting;
+        tree.utmNorthing = utm.northing;
+        tree.updatedAt = new Date().toISOString();
+
+        enqueueSyncAction("upsertTree", tree);
+        persistLocalState();
+        renderAllUI();
+        showToast(`✅ ย้ายตำแหน่งต้นไม้ #${tree.code} เรียบร้อยแล้ว`, "success");
+      }
+      cancelMoveTree();
+    }
+
+    function cancelMoveTree() {
+      appState.movingTreeId = null;
+      appState.movingTempLatLng = null;
+      if (moveDragMarker) {
+        map.removeLayer(moveDragMarker);
+        moveDragMarker = null;
+      }
+      document.getElementById("moveModeBanner").classList.add("hidden");
+      document.getElementById("tapHintBanner").classList.remove("hidden");
+    }
+
+    /**
+     * 8. แบบฟอร์มบันทึก/แก้ไขข้อมูลต้นไม้ & การคำนวณ GBH/DBH และ UTM
+     */
+    function initTargetSelectorButtons() {
+      const groups = [
+        { id: "targetGroupHuman", key: "targetHuman" },
+        { id: "targetGroupVehicle", key: "targetVehicle" },
+        { id: "targetGroupProperty", key: "targetProperty" }
+      ];
+      const options = [
+        { val: null, label: "ไม่ระบุ" },
+        { val: 0, label: "0" },
+        { val: 1, label: "1" },
+        { val: 2, label: "2" },
+        { val: 3, label: "3" },
+        { val: 4, label: "4" }
+      ];
+
+      groups.forEach(g => {
+        const container = document.getElementById(g.id);
+        container.innerHTML = options.map(opt => `
+          <button type="button" data-target-key="${g.key}" data-target-val="${opt.val === null ? 'null' : opt.val}"
+            onclick="selectTargetScore('${g.key}', ${opt.val === null ? 'null' : opt.val})"
+            class="target-pill-btn py-1.5 px-1 rounded-xl border text-[11px] font-bold transition text-center">
+            ${opt.label}
+          </button>
+        `).join("");
+      });
+    }
+
+    function selectTargetScore(key, val) {
+      appState[key] = val;
+      refreshTargetButtonsUI();
+    }
+
+    function refreshTargetButtonsUI() {
+      document.querySelectorAll(".target-pill-btn").forEach(btn => {
+        const key = btn.getAttribute("data-target-key");
+        const rawVal = btn.getAttribute("data-target-val");
+        const val = rawVal === "null" ? null : Number(rawVal);
+        const isSelected = appState[key] === val;
+
+        if (isSelected) {
+          btn.className = "target-pill-btn py-1.5 px-1 rounded-xl border-2 border-emerald-600 bg-emerald-600 text-white text-[11px] font-bold transition text-center shadow-sm";
+        } else {
+          btn.className = "target-pill-btn py-1.5 px-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-semibold transition text-center";
+        }
+      });
+    }
+
+    function selectRiskScore(score) {
+      appState.selectedRisk = Number(score);
+      const cfg = RISK_CONFIG[appState.selectedRisk] || RISK_CONFIG[0];
+
+      document.querySelectorAll(".risk-opt-btn").forEach(btn => {
+        const s = Number(btn.getAttribute("data-risk"));
+        const sCfg = RISK_CONFIG[s];
+        if (s === appState.selectedRisk) {
+          btn.style.backgroundColor = sCfg.color;
+          btn.style.borderColor = "#0f172a";
+          btn.style.color = s === 2 ? "#0f172a" : "#ffffff";
+        } else {
+          btn.style.backgroundColor = "#f8fafc";
+          btn.style.borderColor = "#cbd5e1";
+          btn.style.color = "#334155";
+        }
+      });
+
+      const banner = document.getElementById("riskDescriptionBanner");
+      banner.className = `px-3 py-2 rounded-xl text-xs font-semibold border ${cfg.bannerBg} ${cfg.textClass}`;
+      banner.textContent = cfg.desc;
+    }
+
+    function getNextTreeCodeForFolder(folderId) {
+      const folderTrees = appState.trees.filter(t => t.folderId === folderId && !t.deleted);
+      let maxNum = 0;
+      folderTrees.forEach(t => {
+        const num = parseInt(String(t.code).replace(/\D/g, ""), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      });
+      return String(maxNum + 1).padStart(3, "0");
+    }
+
+    function openCreateTreeModalAt(lat, lng) {
+      const folder = appState.folders.find(f => f.id === appState.activeFolderId);
+      document.getElementById("treeModalTitle").textContent = "🌳 ปักหมุดประเมินสุขภาพต้นไม้ใหม่";
+      document.getElementById("treeModalFolderSubtitle").textContent = `โฟลเดอร์: ${folder ? folder.name : "ทั่วไป"}`;
+
+      document.getElementById("formTreeId").value = "";
+      document.getElementById("formTreeCode").value = getNextTreeCodeForFolder(appState.activeFolderId);
+      document.getElementById("formSpecies").value = "";
+      document.getElementById("formLat").value = lat.toFixed(7);
+      document.getElementById("formLng").value = lng.toFixed(7);
+      updateUtmFromLatLngInputs();
+
+      document.getElementById("formGbh").value = "";
+      document.getElementById("formDbh").value = "";
+      document.getElementById("formHeight").value = "";
+      document.getElementById("formCanopy").value = "";
+      document.getElementById("formOccupancy").value = "2";
+      document.getElementById("formAction").selectedIndex = 0;
+      document.getElementById("formNotes").value = "";
+
+      selectRiskScore(0);
+      appState.targetHuman = null;
+      appState.targetVehicle = null;
+      appState.targetProperty = null;
+      refreshTargetButtonsUI();
+      clearFormPhoto();
+
+      document.getElementById("treeFormModal").classList.remove("hidden");
+    }
+
+    function openEditTreeModal(treeId) {
+      const tree = appState.trees.find(t => t.id === treeId);
+      if (!tree) return;
+      map.closePopup();
+
+      const folder = appState.folders.find(f => f.id === tree.folderId);
+      document.getElementById("treeModalTitle").textContent = `✏️ แก้ไขข้อมูลต้นไม้ #${tree.code}`;
+      document.getElementById("treeModalFolderSubtitle").textContent = `โฟลเดอร์: ${folder ? folder.name : "ทั่วไป"}`;
+
+      document.getElementById("formTreeId").value = tree.id;
+      document.getElementById("formTreeCode").value = tree.code;
+      document.getElementById("formSpecies").value = tree.species;
+      document.getElementById("formLat").value = tree.lat;
+      document.getElementById("formLng").value = tree.lng;
+      updateUtmFromLatLngInputs();
+
+      document.getElementById("formGbh").value = tree.gbh || "";
+      document.getElementById("formDbh").value = tree.dbh || "";
+      document.getElementById("formHeight").value = tree.height || "";
+      document.getElementById("formCanopy").value = tree.canopy || "";
+      document.getElementById("formOccupancy").value = String(tree.occupancy || 2);
+      document.getElementById("formAction").value = tree.action || "เฝ้าระวังตามรอบปกติ (6-12 เดือน)";
+      document.getElementById("formNotes").value = tree.notes || "";
+
+      selectRiskScore(tree.riskScore ?? 0);
+      appState.targetHuman = tree.targetHuman ?? null;
+      appState.targetVehicle = tree.targetVehicle ?? null;
+      appState.targetProperty = tree.targetProperty ?? null;
+      refreshTargetButtonsUI();
+
+      if (tree.photo) {
+        appState.currentFormPhoto = tree.photo;
+        document.getElementById("photoPreviewImg").src = tree.photo;
+        document.getElementById("photoPreviewImg").classList.remove("hidden");
+        document.getElementById("photoPlaceholder").classList.add("hidden");
+        document.getElementById("btnRemovePhoto").classList.remove("hidden");
+      } else {
+        clearFormPhoto();
+      }
+
+      document.getElementById("treeFormModal").classList.remove("hidden");
+    }
+
+    function closeTreeFormModal() {
+      document.getElementById("treeFormModal").classList.add("hidden");
+    }
+
+    function syncDbhFromGbh() {
+      const gbh = parseFloat(document.getElementById("formGbh").value);
+      if (!isNaN(gbh) && gbh > 0) {
+        document.getElementById("formDbh").value = (gbh / Math.PI).toFixed(1);
+      } else {
+        document.getElementById("formDbh").value = "";
+      }
+    }
+
+    function syncGbhFromDbh() {
+      const dbh = parseFloat(document.getElementById("formDbh").value);
+      if (!isNaN(dbh) && dbh > 0) {
+        document.getElementById("formGbh").value = (dbh * Math.PI).toFixed(1);
+      } else {
+        document.getElementById("formGbh").value = "";
+      }
+    }
+
+    function updateUtmFromLatLngInputs() {
+      const lat = parseFloat(document.getElementById("formLat").value);
+      const lng = parseFloat(document.getElementById("formLng").value);
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const utm = latLngToUtm(lat, lng);
+      document.getElementById("formUtmZoneBadge").textContent = `Zone ${utm.zone}`;
+      document.getElementById("formUtmEasting").value = utm.easting;
+      document.getElementById("formUtmNorthing").value = utm.northing;
+    }
+
+    /**
+     * บีบอัดรูปถ่ายอัตโนมัติ (Max 800px, JPEG 0.65) เพื่อประหยัดพื้นที่และส่งซิงก์ได้รวดเร็ว
+     */
+    function handlePhotoUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 800;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.65);
+          appState.currentFormPhoto = compressedDataUrl;
+
+          const previewEl = document.getElementById("photoPreviewImg");
+          previewEl.src = compressedDataUrl;
+          previewEl.classList.remove("hidden");
+          document.getElementById("photoPlaceholder").classList.add("hidden");
+          document.getElementById("btnRemovePhoto").classList.remove("hidden");
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearFormPhoto() {
+      appState.currentFormPhoto = "";
+      document.getElementById("formPhotoInput").value = "";
+      document.getElementById("photoPreviewImg").src = "";
+      document.getElementById("photoPreviewImg").classList.add("hidden");
+      document.getElementById("photoPlaceholder").classList.remove("hidden");
+      document.getElementById("btnRemovePhoto").classList.add("hidden");
+    }
+
+    function handleTreeFormSubmit(event) {
+      event.preventDefault();
+      const existingId = document.getElementById("formTreeId").value;
+      const lat = parseFloat(document.getElementById("formLat").value);
+      const lng = parseFloat(document.getElementById("formLng").value);
+      const utm = latLngToUtm(lat, lng);
+
+      const treePayload = {
+        id: existingId || `tree_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        folderId: appState.activeFolderId,
+        code: document.getElementById("formTreeCode").value.trim() || "001",
+        species: document.getElementById("formSpecies").value.trim() || "ไม่ระบุชนิด",
+        lat: Number(lat.toFixed(7)),
+        lng: Number(lng.toFixed(7)),
+        utmZone: utm.zone,
+        utmEasting: utm.easting,
+        utmNorthing: utm.northing,
+        gbh: document.getElementById("formGbh").value || "",
+        dbh: document.getElementById("formDbh").value || "",
+        height: document.getElementById("formHeight").value || "",
+        canopy: document.getElementById("formCanopy").value || "",
+        riskScore: appState.selectedRisk,
+        targetHuman: appState.targetHuman,
+        targetVehicle: appState.targetVehicle,
+        targetProperty: appState.targetProperty,
+        occupancy: Number(document.getElementById("formOccupancy").value || 2),
+        action: document.getElementById("formAction").value,
+        notes: document.getElementById("formNotes").value.trim(),
+        photo: appState.currentFormPhoto || "",
+        surveyor: appState.surveyorName || "ไม่ระบุชื่อ",
+        updatedAt: new Date().toISOString(),
+        deleted: false
+      };
+
+      if (existingId) {
+        const idx = appState.trees.findIndex(t => t.id === existingId);
+        if (idx !== -1) appState.trees[idx] = treePayload;
+      } else {
+        appState.trees.push(treePayload);
+      }
+
+      enqueueSyncAction("upsertTree", treePayload);
+      persistLocalState();
+      closeTreeFormModal();
+      renderAllUI();
+      showToast(`✅ บันทึกต้นไม้ #${treePayload.code} (${treePayload.species}) สำเร็จ`, "success");
+    }
+
+    function confirmDeleteTree(treeId) {
+      const tree = appState.trees.find(t => t.id === treeId);
+      if (!tree) return;
+      map.closePopup();
+
+      openConfirmDialog(
+        "🗑️ ลบข้อมูลต้นไม้",
+        `คุณต้องการลบข้อมูลต้นไม้ #${tree.code} (${tree.species}) ใช่หรือไม่?`,
+        () => {
+          tree.deleted = true;
+          tree.updatedAt = new Date().toISOString();
+          enqueueSyncAction("deleteTree", { id: tree.id, updatedAt: tree.updatedAt });
+          persistLocalState();
+          renderAllUI();
+          showToast(`🗑️ ลบต้นไม้ #${tree.code} เรียบร้อยแล้ว`, "info");
+        }
+      );
+    }
+
+    /**
+     * 9. แปลงพิกัด WGS84 (Lat, Lng) เป็น UTM (Zone 47N / 48N)
+     */
+    function latLngToUtm(lat, lng) {
+      const a = 6378137.0;
+      const f = 1 / 298.257223563;
+      const k0 = 0.9996;
+      const e2 = f * (2 - f);
+      const ep2 = e2 / (1 - e2);
+
+      const zoneNum = Math.floor((lng + 180) / 6) + 1;
+      const lonOrigin = (zoneNum - 1) * 6 - 180 + 3;
+
+      const latRad = (lat * Math.PI) / 180;
+      const lonRad = (lng * Math.PI) / 180;
+      const lonOriginRad = (lonOrigin * Math.PI) / 180;
+
+      const N = a / Math.sqrt(1 - e2 * Math.sin(latRad) * Math.sin(latRad));
+      const T = Math.tan(latRad) * Math.tan(latRad);
+      const C = ep2 * Math.cos(latRad) * Math.cos(latRad);
+      const A = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+      const M = a * (
+        (1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 * e2 * e2) / 256) * latRad -
+        ((3 * e2) / 8 + (3 * e2 * e2) / 32 + (45 * e2 * e2 * e2) / 1024) * Math.sin(2 * latRad) +
+        ((15 * e2 * e2) / 256 + (45 * e2 * e2 * e2) / 1024) * Math.sin(4 * latRad) -
+        ((35 * e2 * e2 * e2) / 3072) * Math.sin(6 * latRad)
+      );
+
+      const easting = k0 * N * (
+        A +
+        ((1 - T + C) * A * A * A) / 6 +
+        ((5 - 18 * T + T * T + 72 * C - 58 * ep2) * A * A * A * A * A) / 120
+      ) + 500000.0;
+
+      let northing = k0 * (
+        M +
+        N * Math.tan(latRad) * (
+          (A * A) / 2 +
+          ((5 - T + 9 * C + 4 * C * C) * A * A * A * A) / 24 +
+          ((61 - 58 * T + T * T + 600 * C - 330 * ep2) * A * A * A * A * A * A) / 720
+        )
+      );
+
+      if (lat < 0) northing += 10000000.0;
+      const hemi = lat >= 0 ? "N" : "S";
+
+      return {
+        zone: `${zoneNum}${hemi}`,
+        easting: Math.round(easting),
+        northing: Math.round(northing)
+      };
+    }
+
+    /**
+     * 10. การจัดการโฟลเดอร์, ชื่อผู้สำรวจ, แถบกรองทีม และแท็บรายการต้นไม้
+     */
+    function renderAllUI() {
+      renderFolderDropdown();
+      renderTeamFilterChips();
+      renderMapMarkersAndCanopies();
+      renderTreeList();
+      updateHeaderSurveyorDisplay();
+      updateSyncStatusBadge();
+    }
+
+    function renderFolderDropdown() {
+      const select = document.getElementById("folderSelect");
+      select.innerHTML = appState.folders.map(f => {
+        const count = appState.trees.filter(t => !t.deleted && t.folderId === f.id).length;
+        const selected = f.id === appState.activeFolderId ? "selected" : "";
+        return `<option value="${f.id}" ${selected}>📁 ${escapeHtml(f.name)} (${count})</option>`;
+      }).join("");
+
+      const activeFolder = appState.folders.find(f => f.id === appState.activeFolderId);
+      const activeCount = appState.trees.filter(t => !t.deleted && t.folderId === appState.activeFolderId).length;
+      document.getElementById("stickyFolderName").textContent = activeFolder
+        ? `${activeFolder.name} (${activeCount})`
+        : "โครงการสำรวจทั่วไป";
+
+      const delBtn = document.getElementById("btnDeleteFolder");
+      if (appState.folders.length > 1 && appState.activeFolderId !== "default_folder") {
+        delBtn.classList.remove("hidden");
+      } else {
+        delBtn.classList.add("hidden");
+      }
+    }
+
+    function handleFolderChange(folderId) {
+      appState.activeFolderId = folderId;
+      appState.teamFilter = "ALL";
+      persistLocalState();
+      renderAllUI();
+
+      const trees = getFilteredTrees();
+      if (trees.length > 0 && map) {
+        const bounds = L.latLngBounds(trees.map(t => [t.lat, t.lng]));
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
+      }
+    }
+
+    function openFolderModal(mode) {
+      document.getElementById("folderModalMode").value = mode;
+      const input = document.getElementById("folderNameInput");
+      if (mode === "rename") {
+        const current = appState.folders.find(f => f.id === appState.activeFolderId);
+        document.getElementById("folderModalTitle").textContent = "✏️ แก้ไขชื่อโฟลเดอร์โครงการ";
+        input.value = current ? current.name : "";
+      } else {
+        document.getElementById("folderModalTitle").textContent = "📁 สร้างโฟลเดอร์โครงการใหม่";
+        input.value = "";
+      }
+      document.getElementById("folderModal").classList.remove("hidden");
+      setTimeout(() => input.focus(), 100);
+    }
+
+    function closeFolderModal() {
+      document.getElementById("folderModal").classList.add("hidden");
+    }
+
+    function saveFolderModal() {
+      const mode = document.getElementById("folderModalMode").value;
+      const name = document.getElementById("folderNameInput").value.trim();
+      if (!name) {
+        showToast("⚠️ กรุณากรอกชื่อโฟลเดอร์", "warning");
+        return;
+      }
+
+      if (mode === "rename") {
+        const folder = appState.folders.find(f => f.id === appState.activeFolderId);
+        if (folder) {
+          folder.name = name;
+          folder.updatedAt = new Date().toISOString();
+          enqueueSyncAction("upsertFolder", folder);
+        }
+      } else {
+        const newFolder = {
+          id: `folder_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+          name,
+          updatedAt: new Date().toISOString()
+        };
+        appState.folders.push(newFolder);
+        appState.activeFolderId = newFolder.id;
+        enqueueSyncAction("upsertFolder", newFolder);
+      }
+
+      persistLocalState();
+      closeFolderModal();
+      renderAllUI();
+      showToast(`📁 บันทึกโฟลเดอร์ "${name}" เรียบร้อยแล้ว`, "success");
+    }
+
+    function confirmDeleteFolder() {
+      const folder = appState.folders.find(f => f.id === appState.activeFolderId);
+      if (!folder || folder.id === "default_folder") return;
+
+      openConfirmDialog(
+        "🗑️ ลบโฟลเดอร์โครงการ",
+        `ยืนยันการลบโฟลเดอร์ "${folder.name}" และข้อมูลต้นไม้ภายในโฟลเดอร์นี้ใช่หรือไม่?`,
+        () => {
+          appState.folders = appState.folders.filter(f => f.id !== folder.id);
+          appState.trees.forEach(t => {
+            if (t.folderId === folder.id) {
+              t.deleted = true;
+              t.updatedAt = new Date().toISOString();
+            }
+          });
+          appState.activeFolderId = appState.folders[0].id;
+          enqueueSyncAction("deleteFolder", { id: folder.id });
+          persistLocalState();
+          renderAllUI();
+          showToast(`🗑️ ลบโฟลเดอร์ "${folder.name}" แล้ว`, "info");
+        }
+      );
+    }
+
+    function renderTeamFilterChips() {
+      const folderTrees = appState.trees.filter(t => !t.deleted && t.folderId === appState.activeFolderId);
+      const countsBySurveyor = {};
+      folderTrees.forEach(t => {
+        const name = (t.surveyor || "ไม่ระบุชื่อ").trim();
+        countsBySurveyor[name] = (countsBySurveyor[name] || 0) + 1;
+      });
+
+      const container = document.getElementById("teamFilterChips");
+      const allActive = appState.teamFilter === "ALL";
+      let html = `
+        <button type="button" onclick="setTeamFilter('ALL')"
+          class="px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition ${
+            allActive ? "bg-amber-400 text-slate-950 shadow-sm" : "bg-emerald-950/70 text-emerald-100 hover:bg-emerald-800"
+          }">
+          ทั้งหมด (${folderTrees.length})
+        </button>
+      `;
+
+      Object.entries(countsBySurveyor).forEach(([name, count]) => {
+        const isActive = appState.teamFilter === name;
+        html += `
+          <button type="button" onclick="setTeamFilter('${escapeHtml(name)}')"
+            class="px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition ${
+              isActive ? "bg-amber-400 text-slate-950 font-bold shadow-sm" : "bg-emerald-950/70 text-emerald-100 hover:bg-emerald-800"
+            }">
+            ${escapeHtml(name)} (${count})
+          </button>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function setTeamFilter(name) {
+      appState.teamFilter = name;
+      renderTeamFilterChips();
+      renderMapMarkersAndCanopies();
+      renderTreeList();
+    }
+
+    function openSurveyorModal() {
+      document.getElementById("surveyorNameInput").value = appState.surveyorName;
+      const names = [...new Set(appState.trees.map(t => t.surveyor).filter(Boolean))];
+      const box = document.getElementById("recentSurveyorsBox");
+      box.innerHTML = names.slice(0, 8).map(n => `
+        <button type="button" onclick="document.getElementById('surveyorNameInput').value='${escapeHtml(n)}'"
+          class="px-2.5 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-200">
+          ${escapeHtml(n)}
+        </button>
+      `).join("");
+      document.getElementById("surveyorModal").classList.remove("hidden");
+    }
+
+    function closeSurveyorModal() {
+      document.getElementById("surveyorModal").classList.add("hidden");
+    }
+
+    function saveSurveyorName() {
+      const name = document.getElementById("surveyorNameInput").value.trim();
+      appState.surveyorName = name;
+      localStorage.setItem(STORAGE_KEYS.SURVEYOR, name);
+      updateHeaderSurveyorDisplay();
+      closeSurveyorModal();
+      showToast(`👤 ตั้งชื่อผู้สำรวจเป็น "${name || "ไม่ระบุชื่อ"}" แล้ว`, "success");
+    }
+
+    function updateHeaderSurveyorDisplay() {
+      document.getElementById("headerSurveyorLabel").textContent = appState.surveyorName || "ผู้สำรวจ";
+    }
+
+    function switchMainTab(tab) {
+      appState.activeTab = tab;
+      const mapSection = document.getElementById("mapSection");
+      const listSection = document.getElementById("listSection");
+      const btnMap = document.getElementById("tabBtnMap");
+      const btnList = document.getElementById("tabBtnList");
+
+      if (tab === "map") {
+        mapSection.classList.remove("hidden");
+        listSection.classList.add("hidden");
+        btnMap.className = "py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 border-b-2 border-emerald-600 text-emerald-800 bg-emerald-50/40 transition";
+        btnList.className = "py-2.5 px-3 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition";
+        setTimeout(syncViewportHeights, 50);
+      } else {
+        mapSection.classList.add("hidden");
+        listSection.classList.remove("hidden");
+        btnList.className = "py-2.5 px-3 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 border-b-2 border-emerald-600 text-emerald-800 bg-emerald-50/40 transition";
+        btnMap.className = "py-2.5 px-3 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition";
+        renderTreeList();
+      }
+    }
+
+    function renderTreeList() {
+      const container = document.getElementById("treeListContainer");
+      const search = (document.getElementById("listSearchInput")?.value || "").toLowerCase().trim();
+      const riskFilter = document.getElementById("listRiskFilter")?.value || "all";
+
+      let trees = getFilteredTrees();
+      if (riskFilter !== "all") {
+        trees = trees.filter(t => String(t.riskScore ?? 0) === riskFilter);
+      }
+      if (search) {
+        trees = trees.filter(t =>
+          String(t.code).toLowerCase().includes(search) ||
+          String(t.species).toLowerCase().includes(search) ||
+          String(t.surveyor || "").toLowerCase().includes(search) ||
+          String(t.notes || "").toLowerCase().includes(search)
+        );
+      }
+
+      if (trees.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full bg-white rounded-3xl p-8 text-center border border-slate-200 space-y-2">
+            <div class="text-4xl">🌱</div>
+            <h4 class="font-bold text-slate-800 text-sm sm:text-base">ยังไม่มีข้อมูลต้นไม้ในเงื่อนไขที่เลือก</h4>
+            <p class="text-xs text-slate-500">สลับไปที่แท็บ "แผนที่ดาวเทียม" แล้วแตะตำแหน่งต้นไม้บนแผนที่เพื่อเริ่มบันทึกได้เลย</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = trees.map(tree => {
+        const risk = Number(tree.riskScore ?? 0);
+        const cfg = RISK_CONFIG[risk] || RISK_CONFIG[0];
+        const utm = latLngToUtm(tree.lat, tree.lng);
+        const tH = tree.targetHuman ?? "-";
+        const tV = tree.targetVehicle ?? "-";
+        const tP = tree.targetProperty ?? "-";
+
+        return `
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-between">
+            <div>
+              <div class="px-3.5 py-2 flex items-center justify-between text-white" style="background-color:${cfg.color};">
+                <span class="font-bold text-xs sm:text-sm">#${escapeHtml(tree.code)} • ${escapeHtml(tree.species)}</span>
+                <span class="px-2 py-0.5 rounded-full bg-black/25 text-[11px] font-bold">เสี่ยง ${risk}</span>
+              </div>
+              <div class="p-3.5 space-y-2 text-xs">
+                <div class="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>👤 ${escapeHtml(tree.surveyor || "ไม่ระบุชื่อ")}</span>
+                  <span class="font-mono">UTM ${utm.zone}: ${utm.easting}E, ${utm.northing}N</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 text-center">
+                  <div><div class="text-[10px] text-slate-400">GBH</div><div class="font-bold">${tree.gbh || "-"}</div></div>
+                  <div><div class="text-[10px] text-slate-400">DBH</div><div class="font-bold">${tree.dbh || "-"}</div></div>
+                  <div><div class="text-[10px] text-slate-400">สูง (ม.)</div><div class="font-bold">${tree.height || "-"}</div></div>
+                  <div><div class="text-[10px] text-slate-400">พุ่ม (ม.)</div><div class="font-bold">${tree.canopy || "-"}</div></div>
+                </div>
+                <div class="text-[11px] text-slate-700">
+                  🎯 เป้าหมาย: <b>H:${tH}</b> | <b>V:${tV}</b> | <b>P:${tP}</b> • เข้าใช้พื้นที่: <b>ระดับ ${tree.occupancy || 2}</b>
+                </div>
+                ${tree.notes ? `<p class="text-[11px] text-slate-600 bg-amber-50/70 p-2 rounded-xl border border-amber-100">📝 ${escapeHtml(tree.notes)}</p>` : ""}
+                ${tree.photo ? `<img src="${tree.photo}" onclick="openPhotoLightbox('${tree.id}')" class="w-full h-32 object-cover rounded-xl border border-slate-200 cursor-pointer" />` : ""}
+              </div>
+            </div>
+            <div class="px-3.5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-1.5">
+              <button type="button" onclick="focusTreeOnMap('${tree.id}')" class="px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-[11px]">
+                🗺️ ดูบนแผนที่
+              </button>
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="openEditTreeModal('${tree.id}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px]">
+                  ✏️ แก้ไข
+                </button>
+                <button type="button" onclick="confirmDeleteTree('${tree.id}')" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-[11px]">
+                  🗑️ ลบ
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function focusTreeOnMap(treeId) {
+      const tree = appState.trees.find(t => t.id === treeId);
+      if (!tree) return;
+      switchMainTab("map");
+      setTimeout(() => {
+        map.flyTo([tree.lat, tree.lng], 20, { duration: 0.8 });
+      }, 120);
+    }
+
+    /**
+     * 11. ระบบซิงก์ข้อมูลทีมอัตโนมัติ (Staggered Sync 16–22 วินาที + คิวออฟไลน์)
+     */
+    function enqueueSyncAction(type, payload) {
+      appState.syncQueue.push({
+        queueId: `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        type,
+        payload,
+        timestamp: new Date().toISOString()
+      });
+      updateSyncStatusBadge();
+      // ส่งขึ้น Cloud ทันทีแบบเบื้องหลัง (Debounced 600ms)
+      clearTimeout(window._immediateSyncTimeout);
+      window._immediateSyncTimeout = setTimeout(() => syncWithCloud(false), 600);
+    }
+
+    function startStaggeredCloudSync() {
+      // ซิงก์ครั้งแรกหลังเปิดหน้าเว็บ 1.5 วินาที
+      setTimeout(() => syncWithCloud(false), 1500);
+
+      // ตั้งรอบเวลาเหลื่อมกัน 16-22 วินาที เพื่อรองรับผู้สำรวจพร้อมกัน 10+ คน
+      const scheduleNext = () => {
+        const staggeredDelay = 16000 + Math.floor(Math.random() * 6000);
+        syncTimerId = setTimeout(async () => {
+          await syncWithCloud(false);
+          scheduleNext();
+        }, staggeredDelay);
+      };
+      scheduleNext();
+    }
+
+    function manualSyncNow() {
+      syncWithCloud(true);
+    }
+
+    async function syncWithCloud(isManual) {
+      if (appState.isSyncing || !appState.scriptUrl) return;
+      appState.isSyncing = true;
+      updateSyncStatusBadge();
+
+      const spinIcon = document.getElementById("syncSpinIcon");
+      if (spinIcon) spinIcon.classList.add("animate-spin");
+
+      try {
+        // 1. ส่งรายการที่ค้างอยู่ในคิวขึ้น Google Sheets ก่อน (ถ้ามี)
+        if (appState.syncQueue.length > 0) {
+          const queueBatch = [...appState.syncQueue];
+          const postRes = await fetch(appState.scriptUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "syncBatch", items: queueBatch })
+          });
+          if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
+          const postJson = await postRes.json();
+          if (postJson && postJson.status === "ok") {
+            const sentIds = new Set(queueBatch.map(i => i.queueId));
+            appState.syncQueue = appState.syncQueue.filter(i => !sentIds.has(i.queueId));
+            persistLocalState();
+          }
+        }
+
+        // 2. ดึงข้อมูลล่าสุดของทีมทั้งหมดจาก Google Sheets
+        const getUrl = `${appState.scriptUrl}?action=getAll&t=${Date.now()}`;
+        const getRes = await fetch(getUrl);
+        if (!getRes.ok) throw new Error(`HTTP ${getRes.status}`);
+        const data = await getRes.json();
+
+        if (data && data.status === "ok") {
+          mergeRemoteCloudData(data.folders || [], data.trees || []);
+          const nowTime = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+          setSyncBadgeState("synced", `🟢 ซิงก์ทีมแล้ว (${nowTime})`);
+          if (isManual) showToast("✅ ซิงก์ข้อมูลกับทีมสำรวจสำเร็จแล้ว", "success");
+        }
+      } catch (err) {
+        console.warn("Cloud sync warning:", err);
+        setSyncBadgeState("offline", appState.syncQueue.length > 0
+          ? `🟠 รอซิงก์ (${appState.syncQueue.length} รายการ)`
+          : "⚠️ รอเชื่อมต่อ Cloud");
+        if (isManual) {
+          showToast("⚠️ ซิงก์ไม่สำเร็จ: ตรวจสอบอินเทอร์เน็ตหรือเปิดผ่านลิงก์ GitHub Pages จริง", "warning");
+        }
+      } finally {
+        appState.isSyncing = false;
+        if (spinIcon) spinIcon.classList.remove("animate-spin");
+      }
+    }
+
+    function mergeRemoteCloudData(remoteFolders, remoteTrees) {
+      let hasChanged = false;
+
+      // ผสานข้อมูลโฟลเดอร์
+      remoteFolders.forEach(rf => {
+        if (!rf || !rf.id) return;
+        const localIdx = appState.folders.findIndex(f => f.id === rf.id);
+        if (localIdx === -1) {
+          appState.folders.push(rf);
+          hasChanged = true;
+        } else if (rf.updatedAt && (!appState.folders[localIdx].updatedAt || rf.updatedAt > appState.folders[localIdx].updatedAt)) {
+          appState.folders[localIdx] = rf;
+          hasChanged = true;
+        }
+      });
+
+      // ผสานข้อมูลต้นไม้ (ยึดตาม updatedAt ล่าสุด)
+      remoteTrees.forEach(rt => {
+        if (!rt || !rt.id) return;
+        const localIdx = appState.trees.findIndex(t => t.id === rt.id);
+        if (localIdx === -1) {
+          appState.trees.push(rt);
+          hasChanged = true;
+        } else {
+          const localTree = appState.trees[localIdx];
+          if (rt.updatedAt && (!localTree.updatedAt || rt.updatedAt > localTree.updatedAt)) {
+            // คงรูปถ่ายในเครื่องไว้หากฝั่ง Server ตัดรูปออกเพื่อประหยัดพื้นที่ชีต
+            if (!rt.photo && localTree.photo) rt.photo = localTree.photo;
+            appState.trees[localIdx] = rt;
+            hasChanged = true;
+          }
+        }
+      });
+
+      if (hasChanged) {
+        persistLocalState();
+        renderAllUI();
+      }
+    }
+
+    function updateSyncStatusBadge() {
+      if (appState.isSyncing) {
+        setSyncBadgeState("syncing", "🟡 กำลังซิงก์ข้อมูล...");
+      } else if (appState.syncQueue.length > 0) {
+        setSyncBadgeState("offline", `🟠 รอซิงก์ (${appState.syncQueue.length})`);
+      }
+    }
+
+    function setSyncBadgeState(type, text) {
+      const badge = document.getElementById("syncStatusBadge");
+      if (!badge) return;
+      badge.textContent = text;
+      if (type === "synced") {
+        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap";
+      } else if (type === "syncing") {
+        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap";
+      } else {
+        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-800 border border-orange-200 whitespace-nowrap";
+      }
+    }
+
+    /**
+     * 12. การตั้งค่า Cloud Modal & ทดสอบการเชื่อมต่อ
+     */
+    function openCloudModal() {
+      document.getElementById("cloudUrlInput").value = appState.scriptUrl;
+      document.getElementById("cloudTestResultBox").classList.add("hidden");
+      document.getElementById("cloudModal").classList.remove("hidden");
+    }
+
+    function closeCloudModal() {
+      document.getElementById("cloudModal").classList.add("hidden");
+    }
+
+    function restoreDefaultCloudUrl() {
+      document.getElementById("cloudUrlInput").value = DEFAULT_SCRIPT_URL;
+      appState.scriptUrl = DEFAULT_SCRIPT_URL;
+      localStorage.setItem(STORAGE_KEYS.SCRIPT_URL, DEFAULT_SCRIPT_URL);
+      localStorage.setItem(STORAGE_KEYS.SCRIPT_VER, SCRIPT_URL_VERSION);
+      showToast("🔄 คืนค่า URL เริ่มต้นเรียบร้อยแล้ว", "success");
+    }
+
+    function saveCloudUrl() {
+      const url = document.getElementById("cloudUrlInput").value.trim();
+      if (!url) {
+        showToast("⚠️ กรุณากรอก Web App URL", "warning");
+        return;
+      }
+      appState.scriptUrl = url;
+      localStorage.setItem(STORAGE_KEYS.SCRIPT_URL, url);
+      showToast("💾 บันทึก Cloud URL เรียบร้อยแล้ว", "success");
+      syncWithCloud(true);
+    }
+
+    async function testCloudConnection() {
+      const url = document.getElementById("cloudUrlInput").value.trim();
+      const resultBox = document.getElementById("cloudTestResultBox");
+      resultBox.classList.remove("hidden");
+      resultBox.className = "p-3 rounded-2xl text-xs border bg-sky-50 border-sky-200 text-sky-800";
+      resultBox.textContent = "⏳ กำลังทดสอบการเชื่อมต่อกับ Google Apps Script...";
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`${url}?action=getAll&t=${Date.now()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const ms = Math.round(performance.now() - start);
+
+        if (json && json.status === "ok") {
+          const treeCount = Array.isArray(json.trees) ? json.trees.length : 0;
+          resultBox.className = "p-3 rounded-2xl text-xs border bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold";
+          resultBox.innerHTML = `✅ เชื่อมต่อฐานข้อมูลสำเร็จ! (${ms} ms)<br><span class="font-normal text-emerald-700">พบข้อมูลต้นไม้บน Cloud จำนวน ${treeCount} รายการ พร้อมใช้งานทั้งทีม</span>`;
+        } else {
+          throw new Error("รูปแบบข้อมูลตอบกลับไม่ถูกต้อง");
+        }
+      } catch (err) {
+        resultBox.className = "p-3 rounded-2xl text-xs border bg-rose-50 border-rose-300 text-rose-900";
+        resultBox.innerHTML = `❌ <b>เชื่อมต่อไม่สำเร็จ:</b> ${escapeHtml(err.message)}<br><span class="text-[11px] text-rose-700">• หากเปิดในหน้าพรีวิว Gemini ให้คัดลอกไปเปิดบนลิงก์ GitHub Pages จริง<br>• ตรวจสอบใน Apps Script ว่าตั้งค่าผู้ที่มีสิทธิ์เข้าถึงเป็น <b>"ทุกคน (Anyone)"</b> แล้ว</span>`;
+      }
+    }
+
+    function renderBackendCodePreview() {
+      const code = `function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var fSheet = getOrCreateSheet_(ss, "Folders", ["id", "name", "updatedAt"]);
+  var tSheet = getOrCreateSheet_(ss, "Trees", [
+    "id","folderId","code","species","lat","lng","utmZone","utmEasting","utmNorthing",
+    "gbh","dbh","height","canopy","riskScore","targetHuman","targetVehicle","targetProperty",
+    "occupancy","action","notes","surveyor","updatedAt","deleted"
+  ]);
+  return jsonResponse_({
+    status: "ok",
+    folders: sheetToObjects_(fSheet),
+    trees: sheetToObjects_(tSheet)
+  });
+}
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var fSheet = getOrCreateSheet_(ss, "Folders", ["id", "name", "updatedAt"]);
+    var tSheet = getOrCreateSheet_(ss, "Trees", [
+      "id","folderId","code","species","lat","lng","utmZone","utmEasting","utmNorthing",
+      "gbh","dbh","height","canopy","riskScore","targetHuman","targetVehicle","targetProperty",
+      "occupancy","action","notes","surveyor","updatedAt","deleted"
+    ]);
+    var items = body.items || [];
+    items.forEach(function(item) {
+      if (item.type === "upsertFolder") upsertRow_(fSheet, item.payload);
+      if (item.type === "upsertTree") upsertRow_(tSheet, item.payload);
+      if (item.type === "deleteTree") upsertRow_(tSheet, { id: item.payload.id, deleted: true, updatedAt: item.payload.updatedAt });
+    });
+    return jsonResponse_({ status: "ok", processed: items.length });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getOrCreateSheet_(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function sheetToObjects_(sheet) {
+  var values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+  var headers = values[0];
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      obj[headers[j]] = values[i][j];
+    }
+    if (obj.lat !== "") obj.lat = Number(obj.lat);
+    if (obj.lng !== "") obj.lng = Number(obj.lng);
+    if (obj.riskScore !== "") obj.riskScore = Number(obj.riskScore);
+    obj.deleted = (obj.deleted === true || obj.deleted === "true");
+    out.push(obj);
+  }
+  return out;
+}
+
+function upsertRow_(sheet, obj) {
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var rowIdx = -1;
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][0]) === String(obj.id)) {
+      rowIdx = i + 1;
+      break;
+    }
+  }
+  var rowData = headers.map(function(h) {
+    return obj[h] !== undefined && obj[h] !== null ? obj[h] : (rowIdx > 0 ? values[rowIdx - 1][headers.indexOf(h)] : "");
+  });
+  if (rowIdx > 0) {
+    sheet.getRange(rowIdx, 1, 1, headers.length).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+}
+
+function jsonResponse_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}`;
+      document.getElementById("backendCodePreview").value = code;
+    }
+
+    function copyBackendCode() {
+      const textarea = document.getElementById("backendCodePreview");
+      textarea.select();
+      textarea.setSelectionRange(0, 99999);
+      try {
+        document.execCommand("copy");
+        showToast("📋 คัดลอกโค้ด Code.gs ลงคลิปบอร์ดแล้ว", "success");
+      } catch (e) {
+        showToast("⚠️ กรุณากด Ctrl+C เพื่อคัดลอกโค้ดในกล่อง", "warning");
+      }
+    }
+
+    /**
+     * 13. ระบบส่งออกข้อมูล (CSV UTF-8 BOM, GeoJSON, KML, ZIP + รูปถ่าย)
+     */
+    function openExportModal() {
+      document.getElementById("exportModal").classList.remove("hidden");
+    }
+
+    function closeExportModal() {
+      document.getElementById("exportModal").classList.add("hidden");
+    }
+
+    function getExportDataset() {
+      const scope = document.getElementById("exportScopeSelect").value;
+      const folderMap = {};
+      appState.folders.forEach(f => { folderMap[f.id] = f.name; });
+
+      const trees = appState.trees.filter(t => {
+        if (t.deleted) return false;
+        if (scope === "current" && t.folderId !== appState.activeFolderId) return false;
+        return true;
+      }).map(t => ({
+        ...t,
+        folderName: folderMap[t.folderId] || "โครงการสำรวจทั่วไป"
+      }));
+
+      const activeFolder = appState.folders.find(f => f.id === appState.activeFolderId);
+      const baseFilename = scope === "current"
+        ? `Arborist_${(activeFolder ? activeFolder.name : "Survey").replace(/\s+/g, "_")}`
+        : `Arborist_All_Projects`;
+
+      return { trees, baseFilename };
+    }
+
+    function buildCsvContent(trees) {
+      const headers = [
+        "โครงการ/โฟลเดอร์", "รหัสต้นไม้", "ชนิดพันธุ์ไม้", "Latitude", "Longitude",
+        "UTM_Zone", "UTM_Easting", "UTM_Northing", "GBH_ซม", "DBH_ซม",
+        "ความสูง_ม", "รัศมีทรงพุ่ม_ม", "ระดับความเสี่ยง_0_4",
+        "เป้าหมาย_มนุษย์_H", "เป้าหมาย_ยานพาหนะ_V", "เป้าหมาย_ทรัพย์สิน_P",
+        "อัตราเข้าใช้พื้นที่_1_4", "แนวทางจัดการ", "หมายเหตุ", "ผู้สำรวจ", "เวลาอัปเดต", "ชื่อไฟล์รูปถ่าย"
+      ];
+
+      const rows = trees.map((t, idx) => {
+        const utm = latLngToUtm(t.lat, t.lng);
+        const photoFile = t.photo ? `${t.code}_${String(t.species).replace(/[^\u0E00-\u0E7Fa-zA-Z0-9]/g, "_")}_${idx + 1}.jpg` : "";
+        return [
+          t.folderName, t.code, t.species, t.lat, t.lng,
+          utm.zone, utm.easting, utm.northing, t.gbh || "", t.dbh || "",
+          t.height || "", t.canopy || "", t.riskScore ?? 0,
+          t.targetHuman ?? "", t.targetVehicle ?? "", t.targetProperty ?? "",
+          t.occupancy ?? "", t.action || "", t.notes || "", t.surveyor || "", t.updatedAt || "", photoFile
+        ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
+      });
+
+      return "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    }
+
+    function buildGeoJsonContent(trees) {
+      const fc = {
+        type: "FeatureCollection",
+        features: trees.map(t => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [Number(t.lng), Number(t.lat)] },
+          properties: {
+            folder: t.folderName,
+            code: t.code,
+            species: t.species,
+            gbh_cm: t.gbh,
+            dbh_cm: t.dbh,
+            height_m: t.height,
+            canopy_m: t.canopy,
+            riskScore: t.riskScore,
+            targetHuman: t.targetHuman,
+            targetVehicle: t.targetVehicle,
+            targetProperty: t.targetProperty,
+            occupancy: t.occupancy,
+            action: t.action,
+            notes: t.notes,
+            surveyor: t.surveyor,
+            updatedAt: t.updatedAt
+          }
+        }))
+      };
+      return JSON.stringify(fc, null, 2);
+    }
+
+    function buildKmlContent(trees) {
+      const placemarks = trees.map(t => `
+    <Placemark>
+      <name>#${escapeXml(t.code)} - ${escapeXml(t.species)}</name>
+      <description><![CDATA[
+        โครงการ: ${escapeHtml(t.folderName)}<br/>
+        ความเสี่ยงระดับ: ${t.riskScore ?? 0}<br/>
+        GBH: ${t.gbh || "-"} ซม. | DBH: ${t.dbh || "-"} ซม. | สูง: ${t.height || "-"} ม.<br/>
+        เป้าหมาย H/V/P: ${t.targetHuman ?? "-"}/${t.targetVehicle ?? "-"}/${t.targetProperty ?? "-"}<br/>
+        ผู้สำรวจ: ${escapeHtml(t.surveyor || "-")}
+      ]]></description>
+      <Point><coordinates>${t.lng},${t.lat},0</coordinates></Point>
+    </Placemark>`).join("");
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Arborist Survey Export</name>${placemarks}
+  </Document>
+</kml>`;
+    }
+
+    async function exportDataAs(format) {
+      const { trees, baseFilename } = getExportDataset();
+      if (trees.length === 0) {
+        showToast("⚠️ ไม่พบข้อมูลต้นไม้สำหรับส่งออกในขอบเขตที่เลือก", "warning");
+        return;
+      }
+
+      if (format === "csv") {
+        triggerDownloadBlob(new Blob([buildCsvContent(trees)], { type: "text/csv;charset=utf-8;" }), `${baseFilename}.csv`);
+        showToast("📊 ส่งออกไฟล์ CSV (Excel ภาษาไทย) เรียบร้อยแล้ว", "success");
+      } else if (format === "geojson") {
+        triggerDownloadBlob(new Blob([buildGeoJsonContent(trees)], { type: "application/geo+json;charset=utf-8;" }), `${baseFilename}.geojson`);
+        showToast("🌐 ส่งออกไฟล์ GeoJSON เรียบร้อยแล้ว", "success");
+      } else if (format === "kml") {
+        triggerDownloadBlob(new Blob([buildKmlContent(trees)], { type: "application/vnd.google-earth.kml+xml;charset=utf-8;" }), `${baseFilename}.kml`);
+        showToast("🌍 ส่งออกไฟล์ KML เรียบร้อยแล้ว", "success");
+      } else if (format === "zip") {
+        try {
+          if (typeof JSZip === "undefined") {
+            throw new Error("ไม่พบไลบรารี JSZip กรุณาตรวจสอบอินเทอร์เน็ต");
+          }
+          showToast("🗜️ กำลังสร้างไฟล์ ZIP และรวบรวมรูปถ่าย...", "info");
+          const zip = new JSZip();
+          zip.file(`${baseFilename}.csv`, buildCsvContent(trees));
+          zip.file(`${baseFilename}.geojson`, buildGeoJsonContent(trees));
+
+          const photosFolder = zip.folder("photos");
+          trees.forEach((t, idx) => {
+            if (t.photo && t.photo.includes(",")) {
+              const base64Data = t.photo.split(",")[1];
+              const safeSpecies = String(t.species).replace(/[^\u0E00-\u0E7Fa-zA-Z0-9]/g, "_");
+              photosFolder.file(`${t.code}_${safeSpecies}_${idx + 1}.jpg`, base64Data, { base64: true });
+            }
+          });
+
+          const blob = await zip.generateAsync({ type: "blob" });
+          triggerDownloadBlob(blob, `${baseFilename}_with_Photos.zip`);
+          showToast("✅ ส่งออกไฟล์ ZIP พร้อมรูปถ่ายเรียบร้อยแล้ว", "success");
+        } catch (err) {
+          showToast(`❌ สร้างไฟล์ ZIP ไม่สำเร็จ: ${err.message}`, "error");
+        }
+      }
+      closeExportModal();
+    }
+
+    function triggerDownloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    /**
+     * 14. ยูทิลิตี้เสริม: กล่องยืนยัน, Lightbox, Toast และการป้องกัน XSS
+     */
+    function openConfirmDialog(title, message, onConfirm) {
+      document.getElementById("confirmDialogTitle").textContent = title;
+      document.getElementById("confirmDialogMessage").textContent = message;
+      confirmCallback = onConfirm;
+      document.getElementById("confirmDialogOkBtn").onclick = () => {
+        closeConfirmDialog();
+        if (typeof confirmCallback === "function") confirmCallback();
+      };
+      document.getElementById("confirmDialogModal").classList.remove("hidden");
+    }
+
+    function closeConfirmDialog() {
+      document.getElementById("confirmDialogModal").classList.add("hidden");
+    }
+
+    function openPhotoLightbox(treeId) {
+      const tree = appState.trees.find(t => t.id === treeId);
+      if (!tree || !tree.photo) return;
+      document.getElementById("lightboxFullImg").src = tree.photo;
+      document.getElementById("lightboxCaptionText").textContent = `#${tree.code} • ${tree.species} (ผู้สำรวจ: ${tree.surveyor || "ไม่ระบุ"})`;
+      document.getElementById("photoLightboxModal").classList.remove("hidden");
+    }
+
+    function closePhotoLightbox() {
+      document.getElementById("photoLightboxModal").classList.add("hidden");
+    }
+
+    function showToast(message, type = "info") {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+
+      const styles = {
+        success: "bg-emerald-900 text-white border-emerald-500",
+        warning: "bg-amber-900 text-amber-50 border-amber-400",
+        error: "bg-rose-900 text-white border-rose-500",
+        info: "bg-slate-900 text-white border-slate-600"
+      };
+
+      toast.className = `pointer-events-auto px-4 py-2.5 rounded-2xl shadow-xl border text-xs sm:text-sm font-medium transition-all duration-200 ${styles[type] || styles.info}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(8px)";
+        setTimeout(() => toast.remove(), 220);
+      }, 3600);
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function escapeXml(str) {
+      return escapeHtml(str);
+    }
+  </script>
+</body>
+</html>
