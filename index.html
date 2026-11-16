@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <!-- ป้องกันเบราว์เซอร์แคชหน้าเว็บเก่า เพื่อให้รับการอัปเดตเวอร์ชันล่าสุดเสมอ -->
+  <!-- ป้องกันเบราว์เซอร์มือถือและคอมพิวเตอร์จำแคชไฟล์เก่า -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
@@ -196,8 +196,8 @@
     <div class="flex items-center gap-2 min-w-0">
       <span class="text-sm">📁</span>
       <span id="stickyFolderName" class="text-xs sm:text-sm font-bold text-slate-800 truncate">โครงการสำรวจทั่วไป</span>
-      <span id="syncStatusBadge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-        🟢 อัปเดตอัตโนมัติ 10วิ
+      <span id="syncStatusBadge" onclick="event.stopPropagation(); manualSyncNow();" title="แตะเพื่อซิงก์ข้อมูลทีมทันที" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap cursor-pointer">
+        🟢 อัปเดต 10วิ • อีก 10วิ
       </span>
     </div>
 
@@ -572,7 +572,7 @@
   <div id="cloudModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
     <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
       <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
-        <h3 class="text-sm sm:text-base font-bold flex items-center gap-2"><span>⚙️</span> ตั้งค่าฐานข้อมูลทีม (Google Cloud Sync)</h3>
+        <h3 class="text-sm sm:text-base font-bold flex items-center gap-2"><span>⚙️</span> ตั้งค่าฐานข้อมูลทีม (Google Cloud Sync) <span class="text-xs font-mono text-emerald-300">(v4.1)</span></h3>
         <button type="button" onclick="closeCloudModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">✕</button>
       </div>
 
@@ -735,13 +735,8 @@
      * 1. ค่าคงที่และ URL เริ่มต้นของฐานข้อมูล Google Apps Script
      */
     const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzadOoa0gE7sNqypQuM16CUJVhcgo2dLhwh_UcL2Ups4EBuzlPCILvCX0f_wsSMvnGA/exec";
-    const SCRIPT_URL_VERSION = "v2_AKfycbzadOoa0";
-
-    // รอบเวลาการอัปเดตข้อมูลอัตโนมัติทุกๆ 10 วินาที (10,000 มิลลิวินาที)
-    const AUTO_SYNC_INTERVAL_MS = 10000;
-    const AUTO_SYNC_INTERVAL_SEC = 10;
-    // รอบตรวจสอบไฟล์ HTML เวอร์ชันใหม่บนเว็บโฮสติ้งทุก 60 วินาที
-    const WEB_VERSION_CHECK_INTERVAL_MS = 60000;
+    const SCRIPT_URL_VERSION = "v4.1_AKfycbzadOoa0";
+    const AUTO_SYNC_INTERVAL_MS = 10000; // อัปเดตอัตโนมัติทุก 10 วินาที
 
     const STORAGE_KEYS = {
       FOLDERS: "arborist_folders_v2",
@@ -773,9 +768,9 @@
       scriptUrl: DEFAULT_SCRIPT_URL,
       syncQueue: [],
       isSyncing: false,
-      lastSyncTimeText: "",
-      lastSyncSuccess: false,
-      nextSyncCountdown: AUTO_SYNC_INTERVAL_SEC,
+      lastSyncedAtText: "",
+      lastSyncState: "synced", // "synced" | "syncing" | "offline"
+      nextSyncTimestamp: Date.now() + AUTO_SYNC_INTERVAL_MS,
       activeTab: "map",
       headerCollapsed: false,
       mapToolsVisible: true,
@@ -790,7 +785,8 @@
       targetProperty: null,
       currentFormPhoto: "",
       movingTreeId: null,
-      movingTempLatLng: null
+      movingTempLatLng: null,
+      activePopupTreeId: null
     };
 
     // ตัวแปรสำหรับ Leaflet Map และเลเยอร์ต่างๆ
@@ -805,17 +801,28 @@
     let userGpsCircle = null;
     let moveDragMarker = null;
     let confirmCallback = null;
-    let openPopupTreeId = null;
-
-    // ตัวแปรควบคุมตัวจับเวลาซิงก์ 10 วินาที และตัวตรวจจับเวอร์ชันเว็บ
     let syncTimerId = null;
-    let countdownIntervalId = null;
-    let webVersionTimerId = null;
-    let initialWebVersionSignature = null;
-    let pendingWebReload = false;
+    let countdownTickerId = null;
+    let markerRegistry = {};
 
     /**
-     * 3. เริ่มต้นระบบเมื่อโหลดหน้าเว็บเสร็จสมบูรณ์
+     * 3. ฟังก์ชันตรวจสอบรูปแบบข้อมูลตอบกลับจาก Google Apps Script (รองรับทั้ง ok:true และ status:"ok"/"connected"/"synced")
+     */
+    function isValidCloudResponse(json) {
+      return Boolean(
+        json &&
+        (
+          json.ok === true ||
+          json.status === "ok" ||
+          json.status === "connected" ||
+          json.status === "synced" ||
+          Array.isArray(json.trees)
+        )
+      );
+    }
+
+    /**
+     * 4. เริ่มต้นระบบเมื่อโหลดหน้าเว็บเสร็จสมบูรณ์
      */
     window.addEventListener("DOMContentLoaded", () => {
       initStorageAndMigration();
@@ -825,8 +832,6 @@
       initSwipeAndResizeObservers();
       renderAllUI();
       startAutoCloudSync();
-      initLifecycleAndVisibilitySync();
-      startWebVersionWatcher();
     });
 
     /**
@@ -888,10 +893,10 @@
     }
 
     /**
-     * 4. ตั้งค่าแผนที่ Leaflet ดาวเทียมความละเอียดสูง + ระบบป้องกันหน้าจอขาว/ดำ 100%
+     * 5. ตั้งค่าแผนที่ Leaflet ดาวเทียมความละเอียดสูง + ระบบป้องกันหน้าจอขาว/ดำ 100%
      */
     function initLeafletMap() {
-      // พิกัดเริ่มต้น: กรุงเทพมหานคร / ม.เกษตรศาสตร์ (13.8476, 100.5696)
+      // พิกัดเริ่มต้น: ม.เกษตรศาสตร์ บางเขน (13.8476, 100.5696)
       map = L.map("map", {
         center: [13.8476, 100.5696],
         zoom: 17,
@@ -951,16 +956,14 @@
       canopyLayerGroup = L.layerGroup().addTo(map);
       markersLayerGroup = L.layerGroup().addTo(map);
 
-      // ติดตามสถานะ Popup ที่เปิดอยู่ เพื่อให้การอัปเดตอัตโนมัติทุก 10 วินาทีไม่ปิด Popup ของผู้ใช้
+      // ติดตามสถานะการเปิด/ปิด Popup เพื่อรักษา Popup เดิมไว้ระหว่างซิงก์ข้อมูลทุก 10 วินาที
       map.on("popupopen", (e) => {
         if (e.popup && e.popup._source && e.popup._source._treeId) {
-          openPopupTreeId = e.popup._source._treeId;
+          appState.activePopupTreeId = e.popup._source._treeId;
         }
       });
-      map.on("popupclose", (e) => {
-        if (e.popup && e.popup._source && e.popup._source._treeId === openPopupTreeId) {
-          openPopupTreeId = null;
-        }
+      map.on("popupclose", () => {
+        appState.activePopupTreeId = null;
       });
 
       // สร้างเลเยอร์กริดระยะ 5x5 เมตรแบบ Dynamic
@@ -1009,7 +1012,6 @@
       window.addEventListener("resize", syncViewportHeights);
       window.addEventListener("orientationchange", () => setTimeout(syncViewportHeights, 250));
 
-      // ติดตามการเปลี่ยนแปลงความสูงของ Header ด้วย ResizeObserver
       const headerEl = document.getElementById("collapsibleHeader");
       if (window.ResizeObserver && headerEl) {
         const ro = new ResizeObserver(() => syncViewportHeights());
@@ -1061,7 +1063,7 @@
     }
 
     /**
-     * 5. ปุ่มควบคุมเลเยอร์บนแผนที่
+     * 6. ปุ่มควบคุมเลเยอร์บนแผนที่
      */
     function toggleMapToolsMenu() {
       appState.mapToolsVisible = !appState.mapToolsVisible;
@@ -1156,7 +1158,6 @@
       }
       const bounds = map.getBounds();
       const center = map.getCenter();
-      // คำนวณระยะ 5 เมตรเป็นองศาละติจูดและลองจิจูด ณ ตำแหน่งปัจจุบัน
       const dLat = 5 / 111320;
       const dLng = 5 / (111320 * Math.cos((center.lat * Math.PI) / 180));
 
@@ -1241,7 +1242,7 @@
     }
 
     /**
-     * 6. การวาดหมุดต้นไม้ (14x14px) และวงกลมทรงพุ่มบนแผนที่ (คง Popup ที่เปิดอยู่ระหว่างอัปเดต)
+     * 7. การวาดหมุดต้นไม้ (14x14px) และวงกลมทรงพุ่มบนแผนที่แบบไม่รบกวนมุมมองและการเปิด Popup
      */
     function getFilteredTrees() {
       return appState.trees.filter(t => {
@@ -1258,12 +1259,10 @@
     function renderMapMarkersAndCanopies() {
       if (!markersLayerGroup || !canopyLayerGroup) return;
 
-      // จดจำต้นไม้ที่กำลังเปิด Popup อยู่ก่อนอัปเดตเลเยอร์ เพื่อไม่ให้รบกวนผู้ใช้ระหว่างซิงก์ 10 วินาที
-      const savedPopupTreeId = openPopupTreeId;
-      let markerToReopen = null;
-
+      const preservedPopupTreeId = appState.activePopupTreeId;
       markersLayerGroup.clearLayers();
       canopyLayerGroup.clearLayers();
+      markerRegistry = {};
 
       const trees = getFilteredTrees();
       const riskCounts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
@@ -1300,17 +1299,13 @@
 
         marker.bindPopup(() => buildTreePopupHTML(tree), { maxWidth: 290, autoPan: false });
         marker.addTo(markersLayerGroup);
-
-        if (savedPopupTreeId && tree.id === savedPopupTreeId) {
-          markerToReopen = marker;
-        }
+        markerRegistry[tree.id] = marker;
       });
 
-      // เปิด Popup เดิมกลับขึ้นมาอย่างนุ่มนวลหากต้นไม้ต้นนั้นยังอยู่
-      if (markerToReopen) {
-        markerToReopen.openPopup();
-      } else {
-        openPopupTreeId = null;
+      // หากผู้ใช้เปิด Popup ของต้นไม้ต้นใดค้างไว้ ให้เปิดกลับคืนโดยไม่ขยับซูมหรือศูนย์กลางแผนที่
+      if (preservedPopupTreeId && markerRegistry[preservedPopupTreeId]) {
+        appState.activePopupTreeId = preservedPopupTreeId;
+        markerRegistry[preservedPopupTreeId].openPopup();
       }
 
       // อัปเดตตัวเลขสรุปในกล่องคำอธิบายสีและแท็บรายการ
@@ -1326,9 +1321,9 @@
       const risk = Number(tree.riskScore ?? 0);
       const cfg = RISK_CONFIG[risk] || RISK_CONFIG[0];
       const utm = latLngToUtm(tree.lat, tree.lng);
-      const tH = tree.targetHuman !== null && tree.targetHuman !== undefined ? tree.targetHuman : "-";
-      const tV = tree.targetVehicle !== null && tree.targetVehicle !== undefined ? tree.targetVehicle : "-";
-      const tP = tree.targetProperty !== null && tree.targetProperty !== undefined ? tree.targetProperty : "-";
+      const tH = tree.targetHuman !== null && tree.targetHuman !== undefined && tree.targetHuman !== "" ? tree.targetHuman : "-";
+      const tV = tree.targetVehicle !== null && tree.targetVehicle !== undefined && tree.targetVehicle !== "" ? tree.targetVehicle : "-";
+      const tP = tree.targetProperty !== null && tree.targetProperty !== undefined && tree.targetProperty !== "" ? tree.targetProperty : "-";
 
       const photoHtml = tree.photo
         ? `<div class="mt-2 rounded-xl overflow-hidden border border-slate-200 cursor-pointer" onclick="openPhotoLightbox('${tree.id}')">
@@ -1376,13 +1371,13 @@
     }
 
     /**
-     * 7. โหมดย้ายตำแหน่งต้นไม้ (📍 ย้ายจุด)
+     * 8. โหมดย้ายตำแหน่งต้นไม้ (📍 ย้ายจุด)
      */
     function startMoveTreeMode(treeId) {
       const tree = appState.trees.find(t => t.id === treeId);
       if (!tree) return;
 
-      openPopupTreeId = null;
+      appState.activePopupTreeId = null;
       map.closePopup();
       appState.movingTreeId = treeId;
       appState.movingTempLatLng = { lat: tree.lat, lng: tree.lng };
@@ -1455,7 +1450,7 @@
     }
 
     /**
-     * 8. แบบฟอร์มบันทึก/แก้ไขข้อมูลต้นไม้ & การคำนวณ GBH/DBH และ UTM
+     * 9. แบบฟอร์มบันทึก/แก้ไขข้อมูลต้นไม้ & การคำนวณ GBH/DBH และ UTM
      */
     function initTargetSelectorButtons() {
       const groups = [
@@ -1570,7 +1565,7 @@
     function openEditTreeModal(treeId) {
       const tree = appState.trees.find(t => t.id === treeId);
       if (!tree) return;
-      openPopupTreeId = null;
+      appState.activePopupTreeId = null;
       map.closePopup();
 
       const folder = appState.folders.find(f => f.id === tree.folderId);
@@ -1593,9 +1588,9 @@
       document.getElementById("formNotes").value = tree.notes || "";
 
       selectRiskScore(tree.riskScore ?? 0);
-      appState.targetHuman = tree.targetHuman ?? null;
-      appState.targetVehicle = tree.targetVehicle ?? null;
-      appState.targetProperty = tree.targetProperty ?? null;
+      appState.targetHuman = tree.targetHuman !== "" ? (tree.targetHuman ?? null) : null;
+      appState.targetVehicle = tree.targetVehicle !== "" ? (tree.targetVehicle ?? null) : null;
+      appState.targetProperty = tree.targetProperty !== "" ? (tree.targetProperty ?? null) : null;
       refreshTargetButtonsUI();
 
       if (tree.photo) {
@@ -1613,7 +1608,6 @@
 
     function closeTreeFormModal() {
       document.getElementById("treeFormModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function syncDbhFromGbh() {
@@ -1748,7 +1742,7 @@
     function confirmDeleteTree(treeId) {
       const tree = appState.trees.find(t => t.id === treeId);
       if (!tree) return;
-      openPopupTreeId = null;
+      appState.activePopupTreeId = null;
       map.closePopup();
 
       openConfirmDialog(
@@ -1766,7 +1760,7 @@
     }
 
     /**
-     * 9. แปลงพิกัด WGS84 (Lat, Lng) เป็น UTM (Zone 47N / 48N)
+     * 10. แปลงพิกัด WGS84 (Lat, Lng) เป็น UTM (Zone 47N / 48N)
      */
     function latLngToUtm(lat, lng) {
       const a = 6378137.0;
@@ -1820,7 +1814,7 @@
     }
 
     /**
-     * 10. การจัดการโฟลเดอร์, ชื่อผู้สำรวจ, แถบกรองทีม และแท็บรายการต้นไม้
+     * 11. การจัดการโฟลเดอร์, ชื่อผู้สำรวจ, แถบกรองทีม และแท็บรายการต้นไม้
      */
     function renderAllUI() {
       renderFolderDropdown();
@@ -1856,7 +1850,7 @@
     function handleFolderChange(folderId) {
       appState.activeFolderId = folderId;
       appState.teamFilter = "ALL";
-      openPopupTreeId = null;
+      appState.activePopupTreeId = null;
       persistLocalState();
       renderAllUI();
 
@@ -1884,7 +1878,6 @@
 
     function closeFolderModal() {
       document.getElementById("folderModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function saveFolderModal() {
@@ -1999,7 +1992,6 @@
 
     function closeSurveyorModal() {
       document.getElementById("surveyorModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function saveSurveyorName() {
@@ -2070,9 +2062,9 @@
         const risk = Number(tree.riskScore ?? 0);
         const cfg = RISK_CONFIG[risk] || RISK_CONFIG[0];
         const utm = latLngToUtm(tree.lat, tree.lng);
-        const tH = tree.targetHuman ?? "-";
-        const tV = tree.targetVehicle ?? "-";
-        const tP = tree.targetProperty ?? "-";
+        const tH = tree.targetHuman !== null && tree.targetHuman !== undefined && tree.targetHuman !== "" ? tree.targetHuman : "-";
+        const tV = tree.targetVehicle !== null && tree.targetVehicle !== undefined && tree.targetVehicle !== "" ? tree.targetVehicle : "-";
+        const tP = tree.targetProperty !== null && tree.targetProperty !== undefined && tree.targetProperty !== "" ? tree.targetProperty : "-";
 
         return `
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-between">
@@ -2127,9 +2119,16 @@
     }
 
     /**
-     * 11. ระบบอัปเดตข้อมูลทีมอัตโนมัติทุกๆ 10 วินาที (Sequential 10s Auto-Sync + Live Countdown)
+     * 12. ระบบซิงก์ข้อมูลทีมอัตโนมัติทุก 10 วินาที (Sequential 10s Sync + Auto Push Offline Records + Live Countdown)
      */
-    function enqueueSyncAction(type, payload) {
+    function enqueueSyncAction(type, payload, triggerImmediate = true) {
+      // ป้องกันคิวซ้ำซ้อนสำหรับรายการ id เดียวกัน
+      if (payload && payload.id) {
+        appState.syncQueue = appState.syncQueue.filter(
+          item => !(item.type === type && item.payload && item.payload.id === payload.id)
+        );
+      }
+
       appState.syncQueue.push({
         queueId: `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         type,
@@ -2137,82 +2136,65 @@
         timestamp: new Date().toISOString()
       });
       updateSyncStatusBadge();
-      // ส่งขึ้น Cloud ทันทีแบบเบื้องหลัง (Debounced 500ms) และรีเซ็ตรอบนับถอยหลัง 10 วินาที
-      clearTimeout(window._immediateSyncTimeout);
-      window._immediateSyncTimeout = setTimeout(() => {
-        triggerImmediateSyncCycle(false);
-      }, 500);
+
+      if (triggerImmediate) {
+        clearTimeout(window._immediateSyncTimeout);
+        window._immediateSyncTimeout = setTimeout(() => syncWithCloud(false), 500);
+      }
     }
 
-    /**
-     * เริ่มต้นรอบการซิงก์อัตโนมัติทุกๆ 10 วินาทีแบบเรียงลำดับ (ไม่ยิงซ้อนกัน)
-     */
     function startAutoCloudSync() {
-      // เริ่มตัวนับถอยหลัง 1 วินาทีบนป้ายสถานะ
-      if (countdownIntervalId) clearInterval(countdownIntervalId);
-      countdownIntervalId = setInterval(() => {
-        if (!appState.isSyncing && appState.nextSyncCountdown > 1) {
-          appState.nextSyncCountdown -= 1;
-          updateSyncStatusBadge();
-        }
+      // ซิงก์ครั้งแรกหลังเปิดหน้าเว็บ 1.2 วินาที
+      appState.nextSyncTimestamp = Date.now() + 1200;
+      setTimeout(() => runSyncCycle(false), 1200);
+
+      // ตัวจับเวลานับถอยหลังทุก 1 วินาทีบนแถบสถานะ
+      if (countdownTickerId) clearInterval(countdownTickerId);
+      countdownTickerId = setInterval(() => {
+        updateSyncStatusBadge();
       }, 1000);
 
-      // ซิงก์ครั้งแรกทันทีหลังโหลดหน้าเว็บ 1 วินาที แล้ววนซ้ำทุกๆ 10 วินาที
-      clearTimeout(syncTimerId);
-      syncTimerId = setTimeout(() => {
-        triggerImmediateSyncCycle(false);
-      }, 1000);
-    }
+      // ซิงก์ทันทีเมื่อกลับมาออนไลน์หรือเปิดหน้าจอมือถือขึ้นมาใหม่
+      window.addEventListener("online", () => {
+        showToast("🌐 กลับมาออนไลน์แล้ว กำลังซิงก์ข้อมูลทีม...", "info");
+        triggerImmediateSyncCycle();
+      });
 
-    /**
-     * รันรอบซิงก์ทันทีและตั้งเวลารอบถัดไปอีก 10 วินาทีหลังทำงานเสร็จ
-     */
-    async function triggerImmediateSyncCycle(isManual) {
-      clearTimeout(syncTimerId);
-      await syncWithCloud(isManual);
-      appState.nextSyncCountdown = AUTO_SYNC_INTERVAL_SEC;
-      updateSyncStatusBadge();
-      syncTimerId = setTimeout(() => {
-        triggerImmediateSyncCycle(false);
-      }, AUTO_SYNC_INTERVAL_MS);
-    }
-
-    /**
-     * ซิงก์ทันทีเมื่อผู้ใช้กลับมาเปิดแท็บ / ปลดล็อกหน้าจอมือถือ / หรือต่อเน็ตกลับมา
-     */
-    function initLifecycleAndVisibilitySync() {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-          triggerImmediateSyncCycle(false);
-          checkForWebAppCodeUpdate();
+          triggerImmediateSyncCycle();
         }
       });
+    }
 
-      window.addEventListener("online", () => {
-        showToast("🌐 เชื่อมต่ออินเทอร์เน็ตแล้ว กำลังอัปเดตข้อมูลทีมทันที...", "info");
-        triggerImmediateSyncCycle(false);
-      });
+    function triggerImmediateSyncCycle() {
+      if (syncTimerId) clearTimeout(syncTimerId);
+      runSyncCycle(false);
+    }
 
-      window.addEventListener("offline", () => {
-        appState.lastSyncSuccess = false;
-        updateSyncStatusBadge();
-      });
+    async function runSyncCycle(isManual) {
+      await syncWithCloud(isManual);
+      appState.nextSyncTimestamp = Date.now() + AUTO_SYNC_INTERVAL_MS;
+      if (syncTimerId) clearTimeout(syncTimerId);
+      syncTimerId = setTimeout(() => runSyncCycle(false), AUTO_SYNC_INTERVAL_MS);
     }
 
     function manualSyncNow() {
-      triggerImmediateSyncCycle(true);
+      if (syncTimerId) clearTimeout(syncTimerId);
+      runSyncCycle(true);
     }
 
     async function syncWithCloud(isManual) {
       if (appState.isSyncing || !appState.scriptUrl) return;
       appState.isSyncing = true;
+      appState.lastSyncState = "syncing";
       updateSyncStatusBadge();
 
       const spinIcon = document.getElementById("syncSpinIcon");
       if (spinIcon) spinIcon.classList.add("animate-spin");
 
       try {
-        // 1. ส่งรายการที่ค้างอยู่ในคิวขึ้น Google Sheets ก่อน (ถ้ามี)
+        // 1. ส่งรายการที่ค้างอยู่ในคิวขึ้น Google Sheets ก่อน (CORS-simple POST: text/plain)
         if (appState.syncQueue.length > 0) {
           const queueBatch = [...appState.syncQueue];
           const postRes = await fetch(appState.scriptUrl, {
@@ -2221,36 +2203,78 @@
             body: JSON.stringify({ action: "syncBatch", items: queueBatch })
           });
           if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
-          const postJson = await postRes.json();
-          if (postJson && postJson.status === "ok") {
-            const sentIds = new Set(queueBatch.map(i => i.queueId));
-            appState.syncQueue = appState.syncQueue.filter(i => !sentIds.has(i.queueId));
-            persistLocalState();
-            checkPendingWebReload();
+          const postText = await postRes.text();
+          let postJson;
+          try {
+            postJson = JSON.parse(postText);
+          } catch (_) {
+            throw new Error("รูปแบบข้อมูลตอบกลับหลังบันทึกไม่ถูกต้อง");
+          }
+
+          if (!isValidCloudResponse(postJson) || postJson.ok === false || postJson.status === "error") {
+            throw new Error(postJson.error || postJson.message || "เซิร์ฟเวอร์ปฏิเสธการบันทึกข้อมูล");
+          }
+
+          const sentIds = new Set(queueBatch.map(i => i.queueId));
+          appState.syncQueue = appState.syncQueue.filter(i => !sentIds.has(i.queueId));
+          persistLocalState();
+        }
+
+        // 2. ดึงข้อมูลล่าสุดของทีมทั้งหมดจาก Google Sheets (CORS-simple GET ไม่มี custom headers)
+        const getUrl = `${appState.scriptUrl}?action=getAll&t=${Date.now()}`;
+        const getRes = await fetch(getUrl);
+        if (!getRes.ok) throw new Error(`HTTP ${getRes.status}`);
+        const getText = await getRes.text();
+        let data;
+        try {
+          data = JSON.parse(getText);
+        } catch (_) {
+          throw new Error("รูปแบบข้อมูลตอบกลับไม่ถูกต้อง");
+        }
+
+        if (!isValidCloudResponse(data) || data.ok === false || data.status === "error") {
+          throw new Error(data.error || data.message || "รูปแบบข้อมูลตอบกลับไม่ถูกต้อง");
+        }
+
+        const remoteFolders = Array.isArray(data.folders) ? data.folders : [];
+        const remoteTrees = Array.isArray(data.trees) ? data.trees : [];
+
+        mergeRemoteCloudData(remoteFolders, remoteTrees);
+
+        // 3. ตรวจสอบว่ามีข้อมูลต้นไม้/โฟลเดอร์ในเครื่องที่ยังไม่ถูกส่งขึ้น Google Sheets หรือไม่ -> ส่งขึ้นให้อัตโนมัติ
+        const pushedMissing = enqueueMissingLocalRecords(remoteFolders, remoteTrees);
+        if (pushedMissing && appState.syncQueue.length > 0) {
+          const pushBatch = [...appState.syncQueue];
+          const pushRes = await fetch(appState.scriptUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "syncBatch", items: pushBatch })
+          });
+          if (pushRes.ok) {
+            const pushJson = JSON.parse(await pushRes.text());
+            if (isValidCloudResponse(pushJson) && pushJson.ok !== false) {
+              const pushedIds = new Set(pushBatch.map(i => i.queueId));
+              appState.syncQueue = appState.syncQueue.filter(i => !pushedIds.has(i.queueId));
+              persistLocalState();
+            }
           }
         }
 
-        // 2. ดึงข้อมูลล่าสุดของทีมทั้งหมดจาก Google Sheets
-        const getUrl = `${appState.scriptUrl}?action=getAll&t=${Date.now()}`;
-        const getRes = await fetch(getUrl, { cache: "no-store" });
-        if (!getRes.ok) throw new Error(`HTTP ${getRes.status}`);
-        const data = await getRes.json();
+        appState.lastSyncedAtText = new Date().toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit"
+        });
+        appState.lastSyncState = "synced";
 
-        if (data && data.status === "ok") {
-          mergeRemoteCloudData(data.folders || [], data.trees || []);
-          appState.lastSyncTimeText = new Date().toLocaleTimeString("th-TH", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit"
-          });
-          appState.lastSyncSuccess = true;
-          if (isManual) showToast("✅ อัปเดตข้อมูลกับทีมสำรวจสำเร็จแล้ว", "success");
+        if (isManual) {
+          showToast(`✅ ซิงก์ข้อมูลกับทีมสำเร็จแล้ว (${appState.trees.filter(t => !t.deleted).length} ต้น)`, "success");
         }
       } catch (err) {
         console.warn("Cloud sync warning:", err);
-        appState.lastSyncSuccess = false;
+        appState.lastSyncState = "offline";
         if (isManual) {
-          showToast("⚠️ อัปเดตไม่สำเร็จ: ตรวจสอบอินเทอร์เน็ตหรือเปิดผ่านลิงก์ GitHub Pages จริง", "warning");
+          showToast(`⚠️ ซิงก์ไม่สำเร็จ: ${err.message}`, "warning");
         }
       } finally {
         appState.isSyncing = false;
@@ -2259,13 +2283,52 @@
       }
     }
 
+    /**
+     * ตรวจหาข้อมูลต้นไม้หรือโฟลเดอร์ในเครื่อง (เช่น ข้อมูลที่เก็บไว้บนมือถือ) ที่ยังไม่มีบน Google Sheets แล้วเพิ่มเข้าคิวส่งอัตโนมัติ
+     */
+    function enqueueMissingLocalRecords(remoteFolders, remoteTrees) {
+      const remoteFolderIds = new Set(remoteFolders.map(f => String(f.id)));
+      const remoteTreeIds = new Set(remoteTrees.map(t => String(t.id)));
+      const queuedFolderIds = new Set(
+        appState.syncQueue.filter(q => q.type === "upsertFolder" && q.payload).map(q => String(q.payload.id))
+      );
+      const queuedTreeIds = new Set(
+        appState.syncQueue.filter(q => (q.type === "upsertTree" || q.type === "deleteTree") && q.payload).map(q => String(q.payload.id))
+      );
+
+      let addedCount = 0;
+
+      appState.folders.forEach(folder => {
+        if (!folder || !folder.id) return;
+        const fid = String(folder.id);
+        if (!remoteFolderIds.has(fid) && !queuedFolderIds.has(fid)) {
+          enqueueSyncAction("upsertFolder", folder, false);
+          addedCount++;
+        }
+      });
+
+      appState.trees.forEach(tree => {
+        if (!tree || !tree.id || tree.deleted) return;
+        const tid = String(tree.id);
+        if (!remoteTreeIds.has(tid) && !queuedTreeIds.has(tid)) {
+          enqueueSyncAction("upsertTree", tree, false);
+          addedCount++;
+        }
+      });
+
+      if (addedCount > 0) {
+        persistLocalState();
+      }
+      return addedCount > 0;
+    }
+
     function mergeRemoteCloudData(remoteFolders, remoteTrees) {
       let hasChanged = false;
 
       // ผสานข้อมูลโฟลเดอร์
       remoteFolders.forEach(rf => {
         if (!rf || !rf.id) return;
-        const localIdx = appState.folders.findIndex(f => f.id === rf.id);
+        const localIdx = appState.folders.findIndex(f => String(f.id) === String(rf.id));
         if (localIdx === -1) {
           appState.folders.push(rf);
           hasChanged = true;
@@ -2278,16 +2341,24 @@
       // ผสานข้อมูลต้นไม้ (ยึดตาม updatedAt ล่าสุด)
       remoteTrees.forEach(rt => {
         if (!rt || !rt.id) return;
-        const localIdx = appState.trees.findIndex(t => t.id === rt.id);
+        const normalizedRemote = {
+          ...rt,
+          lat: Number(rt.lat),
+          lng: Number(rt.lng),
+          riskScore: Number(rt.riskScore ?? 0),
+          deleted: rt.deleted === true || rt.deleted === "true"
+        };
+        if (isNaN(normalizedRemote.lat) || isNaN(normalizedRemote.lng)) return;
+
+        const localIdx = appState.trees.findIndex(t => String(t.id) === String(normalizedRemote.id));
         if (localIdx === -1) {
-          appState.trees.push(rt);
+          appState.trees.push(normalizedRemote);
           hasChanged = true;
         } else {
           const localTree = appState.trees[localIdx];
-          if (rt.updatedAt && (!localTree.updatedAt || rt.updatedAt > localTree.updatedAt)) {
-            // คงรูปถ่ายในเครื่องไว้หากฝั่ง Server ตัดรูปออกเพื่อประหยัดพื้นที่ชีต
-            if (!rt.photo && localTree.photo) rt.photo = localTree.photo;
-            appState.trees[localIdx] = rt;
+          if (normalizedRemote.updatedAt && (!localTree.updatedAt || normalizedRemote.updatedAt > localTree.updatedAt)) {
+            if (!normalizedRemote.photo && localTree.photo) normalizedRemote.photo = localTree.photo;
+            appState.trees[localIdx] = normalizedRemote;
             hasChanged = true;
           }
         }
@@ -2300,99 +2371,29 @@
     }
 
     function updateSyncStatusBadge() {
-      const countdown = Math.max(1, appState.nextSyncCountdown);
-      if (appState.isSyncing) {
-        setSyncBadgeState("syncing", "🟡 กำลังอัปเดตข้อมูล...");
-      } else if (appState.syncQueue.length > 0) {
-        setSyncBadgeState("offline", `🟠 รอซิงก์ (${appState.syncQueue.length}) • อีก ${countdown}วิ`);
-      } else if (appState.lastSyncSuccess && appState.lastSyncTimeText) {
-        setSyncBadgeState("synced", `🟢 อัปเดต 10วิ (${appState.lastSyncTimeText}) • อีก ${countdown}วิ`);
-      } else {
-        setSyncBadgeState("offline", `⚠️ รอเชื่อมต่อ • อีก ${countdown}วิ`);
-      }
-    }
-
-    function setSyncBadgeState(type, text) {
       const badge = document.getElementById("syncStatusBadge");
       if (!badge) return;
-      badge.textContent = text;
-      if (type === "synced") {
-        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap";
-      } else if (type === "syncing") {
-        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap";
+
+      const remainingSec = Math.max(0, Math.ceil((appState.nextSyncTimestamp - Date.now()) / 1000));
+
+      if (appState.isSyncing) {
+        badge.textContent = "🟡 กำลังซิงก์ข้อมูล...";
+        badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap cursor-pointer";
+      } else if (appState.syncQueue.length > 0) {
+        badge.textContent = `🟠 รอซิงก์ (${appState.syncQueue.length}) • อีก ${remainingSec}วิ`;
+        badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-orange-50 text-orange-800 border border-orange-200 whitespace-nowrap cursor-pointer";
+      } else if (appState.lastSyncState === "offline") {
+        badge.textContent = `🟠 รอเชื่อมต่อ • อีก ${remainingSec}วิ`;
+        badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-orange-50 text-orange-800 border border-orange-200 whitespace-nowrap cursor-pointer";
       } else {
-        badge.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-800 border border-orange-200 whitespace-nowrap";
+        const timePart = appState.lastSyncedAtText ? ` (${appState.lastSyncedAtText})` : "";
+        badge.textContent = `🟢 อัปเดต 10วิ${timePart} • อีก ${remainingSec}วิ`;
+        badge.className = "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap cursor-pointer";
       }
     }
 
     /**
-     * 11.5 ระบบตรวจสอบอัปเดตโค้ดหน้าเว็บ (HTML Version Watcher) ทุก 60 วินาที
-     * รีเฟรชหน้าเว็บอัตโนมัติเมื่อมีการอัปโหลดไฟล์ใหม่ขึ้น GitHub Pages (เฉพาะตอนไม่ได้เปิดฟอร์ม/คิวว่าง)
-     */
-    function startWebVersionWatcher() {
-      if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return;
-      checkForWebAppCodeUpdate();
-      webVersionTimerId = setInterval(checkForWebAppCodeUpdate, WEB_VERSION_CHECK_INTERVAL_MS);
-    }
-
-    async function checkForWebAppCodeUpdate() {
-      if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return;
-      try {
-        const res = await fetch(`${window.location.pathname}?_vcheck=${Date.now()}`, {
-          method: "HEAD",
-          cache: "no-store"
-        });
-        if (!res.ok) return;
-
-        const etag = res.headers.get("ETag") || "";
-        const lastMod = res.headers.get("Last-Modified") || "";
-        const signature = `${etag}|${lastMod}`.trim();
-        if (!signature || signature === "|") return;
-
-        if (!initialWebVersionSignature) {
-          initialWebVersionSignature = signature;
-          return;
-        }
-
-        if (signature !== initialWebVersionSignature) {
-          pendingWebReload = true;
-          checkPendingWebReload();
-        }
-      } catch (err) {
-        // ข้ามเงียบๆ หากอยู่ออฟไลน์
-      }
-    }
-
-    function isAnyModalOpen() {
-      const modalIds = [
-        "treeFormModal",
-        "cloudModal",
-        "surveyorModal",
-        "folderModal",
-        "exportModal",
-        "confirmDialogModal",
-        "photoLightboxModal"
-      ];
-      return modalIds.some(id => {
-        const el = document.getElementById(id);
-        return el && !el.classList.contains("hidden");
-      });
-    }
-
-    function checkPendingWebReload() {
-      if (!pendingWebReload) return;
-      if (isAnyModalOpen() || appState.movingTreeId || appState.syncQueue.length > 0 || appState.isSyncing) {
-        return;
-      }
-      pendingWebReload = false;
-      showToast("🔄 พบอัปเดตเวอร์ชันเว็บใหม่ กำลังโหลดหน้าเว็บล่าสุดอัตโนมัติ...", "info");
-      setTimeout(() => {
-        window.location.reload();
-      }, 1200);
-    }
-
-    /**
-     * 12. การตั้งค่า Cloud Modal & ทดสอบการเชื่อมต่อ
+     * 13. การตั้งค่า Cloud Modal & ทดสอบการเชื่อมต่อ
      */
     function openCloudModal() {
       document.getElementById("cloudUrlInput").value = appState.scriptUrl;
@@ -2402,7 +2403,6 @@
 
     function closeCloudModal() {
       document.getElementById("cloudModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function restoreDefaultCloudUrl() {
@@ -2422,7 +2422,7 @@
       appState.scriptUrl = url;
       localStorage.setItem(STORAGE_KEYS.SCRIPT_URL, url);
       showToast("💾 บันทึก Cloud URL เรียบร้อยแล้ว", "success");
-      triggerImmediateSyncCycle(true);
+      manualSyncNow();
     }
 
     async function testCloudConnection() {
@@ -2434,17 +2434,24 @@
 
       try {
         const start = performance.now();
-        const res = await fetch(`${url}?action=getAll&t=${Date.now()}`, { cache: "no-store" });
+        const res = await fetch(`${url}?action=getAll&t=${Date.now()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
+        const rawText = await res.text();
+        let json;
+        try {
+          json = JSON.parse(rawText);
+        } catch (_) {
+          throw new Error("รูปแบบข้อมูลตอบกลับไม่ถูกต้อง (ได้รับหน้าเว็บ HTML แทน JSON)");
+        }
         const ms = Math.round(performance.now() - start);
 
-        if (json && json.status === "ok") {
+        if (isValidCloudResponse(json) && json.ok !== false && json.status !== "error") {
           const treeCount = Array.isArray(json.trees) ? json.trees.length : 0;
+          const folderCount = Array.isArray(json.folders) ? json.folders.length : 0;
           resultBox.className = "p-3 rounded-2xl text-xs border bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold";
-          resultBox.innerHTML = `✅ เชื่อมต่อฐานข้อมูลสำเร็จ! (${ms} ms)<br><span class="font-normal text-emerald-700">พบข้อมูลต้นไม้บน Cloud จำนวน ${treeCount} รายการ พร้อมอัปเดตอัตโนมัติทุก 10 วินาที</span>`;
+          resultBox.innerHTML = `✅ เชื่อมต่อฐานข้อมูลสำเร็จ! (${ms} ms)<br><span class="font-normal text-emerald-700">พบโครงการ ${folderCount} โฟลเดอร์ และข้อมูลต้นไม้บน Cloud จำนวน ${treeCount} รายการ พร้อมซิงก์ทั้งทีม</span>`;
         } else {
-          throw new Error("รูปแบบข้อมูลตอบกลับไม่ถูกต้อง");
+          throw new Error(json.error || json.message || "รูปแบบข้อมูลตอบกลับไม่ถูกต้อง");
         }
       } catch (err) {
         resultBox.className = "p-3 rounded-2xl text-xs border bg-rose-50 border-rose-300 text-rose-900";
@@ -2462,9 +2469,11 @@
     "occupancy","action","notes","surveyor","updatedAt","deleted"
   ]);
   return jsonResponse_({
-    status: "ok",
+    ok: true,
+    status: "connected",
     folders: sheetToObjects_(fSheet),
-    trees: sheetToObjects_(tSheet)
+    trees: sheetToObjects_(tSheet),
+    serverTime: new Date().toISOString()
   });
 }
 
@@ -2486,7 +2495,7 @@ function doPost(e) {
       if (item.type === "upsertTree") upsertRow_(tSheet, item.payload);
       if (item.type === "deleteTree") upsertRow_(tSheet, { id: item.payload.id, deleted: true, updatedAt: item.payload.updatedAt });
     });
-    return jsonResponse_({ status: "ok", processed: items.length });
+    return jsonResponse_({ ok: true, status: "synced", processed: items.length });
   } finally {
     lock.releaseLock();
   }
@@ -2559,7 +2568,7 @@ function jsonResponse_(obj) {
     }
 
     /**
-     * 13. ระบบส่งออกข้อมูล (CSV UTF-8 BOM, GeoJSON, KML, ZIP + รูปถ่าย)
+     * 14. ระบบส่งออกข้อมูล (CSV UTF-8 BOM, GeoJSON, KML, ZIP + รูปถ่าย)
      */
     function openExportModal() {
       document.getElementById("exportModal").classList.remove("hidden");
@@ -2567,7 +2576,6 @@ function jsonResponse_(obj) {
 
     function closeExportModal() {
       document.getElementById("exportModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function getExportDataset() {
@@ -2724,7 +2732,7 @@ function jsonResponse_(obj) {
     }
 
     /**
-     * 14. ยูทิลิตี้เสริม: กล่องยืนยัน, Lightbox, Toast และการป้องกัน XSS
+     * 15. ยูทิลิตี้เสริม: กล่องยืนยัน, Lightbox, Toast และการป้องกัน XSS
      */
     function openConfirmDialog(title, message, onConfirm) {
       document.getElementById("confirmDialogTitle").textContent = title;
@@ -2739,7 +2747,6 @@ function jsonResponse_(obj) {
 
     function closeConfirmDialog() {
       document.getElementById("confirmDialogModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function openPhotoLightbox(treeId) {
@@ -2752,7 +2759,6 @@ function jsonResponse_(obj) {
 
     function closePhotoLightbox() {
       document.getElementById("photoLightboxModal").classList.add("hidden");
-      checkPendingWebReload();
     }
 
     function showToast(message, type = "info") {
