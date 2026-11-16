@@ -7,7 +7,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Arborist Survey — ระบบสำรวจและประเมินสุขภาพต้นไม้ภาคสนาม</title>
+  <title>Arborist Survey — ระบบสำรวจและประเมินสุขภาพต้นไม้ภาคสนาม (v4.2)</title>
 
   <!-- Google Fonts: Inter & Sarabun เพื่อการอ่านภาษาไทยและตัวเลขพิกัดที่คมชัด -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -91,7 +91,7 @@
     }
     .leaflet-popup-content {
       margin: 0 !important;
-      width: 275px !important;
+      width: 285px !important;
     }
     .leaflet-container a.leaflet-popup-close-button {
       top: 8px !important;
@@ -129,7 +129,10 @@
             🌳
           </div>
           <div>
-            <h1 class="text-base sm:text-lg font-bold leading-tight tracking-tight text-white">Arborist Survey</h1>
+            <div class="flex items-center gap-1.5">
+              <h1 class="text-base sm:text-lg font-bold leading-tight tracking-tight text-white">Arborist Survey</h1>
+              <span class="px-1.5 py-0.5 rounded-md bg-emerald-500/25 border border-emerald-400/30 text-[10px] font-mono text-emerald-200">v4.2</span>
+            </div>
             <p class="text-[11px] text-emerald-200/90 leading-tight">ระบบสำรวจและประเมินสุขภาพต้นไม้ภาคสนาม</p>
           </div>
         </div>
@@ -340,7 +343,7 @@
       <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-2">
         <div class="relative flex-1">
           <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
-          <input type="text" id="listSearchInput" oninput="renderTreeList()" placeholder="ค้นหารหัสต้นไม้, ชนิดพันธุ์, ผู้สำรวจ หรือหมายเหตุ..." class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <input type="text" id="listSearchInput" oninput="renderTreeList()" placeholder="ค้นหารหัสต้นไม้, ชนิดพันธุ์, จุดบกพร่อง, ผู้สำรวจ หรือหมายเหตุ..." class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
         </div>
         <select id="listRiskFilter" onchange="renderTreeList()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500">
           <option value="all">🎨 ทุกระดับความเสี่ยง (0–4)</option>
@@ -469,7 +472,51 @@
           </div>
         </div>
 
-        <!-- หมวด 4: ระดับความเสี่ยงอันตราย (Risk Score 0-4) -->
+        <!-- หมวด 4: การประเมินจุดบกพร่อง / ความผิดปกติของต้นไม้ 3 ส่วน (ติ๊กเลือกได้อิสระไม่จำกัดข้อ) -->
+        <div class="bg-emerald-50/50 p-3.5 rounded-2xl border border-emerald-200/80 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-1 border-b border-emerald-200/70 pb-2">
+            <span class="text-xs sm:text-sm font-bold text-emerald-950">🩺 การประเมินจุดบกพร่อง / ความผิดปกติของต้นไม้</span>
+            <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">ติ๊กเลือกได้อิสระไม่จำกัดข้อ</span>
+          </div>
+
+          <!-- 4.1 ส่วนราก (Root) -->
+          <div class="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🌱</span>
+                <span>1.1 ส่วนราก (Root)</span>
+              </span>
+              <span id="badgeCountRoot" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">เลือกแล้ว 0 ข้อ</span>
+            </div>
+            <div id="defectCheckboxesRoot" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5"></div>
+          </div>
+
+          <!-- 4.2 ส่วนลำต้น (Trunk) -->
+          <div class="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🪵</span>
+                <span>1.2 ส่วนลำต้น (Trunk)</span>
+              </span>
+              <span id="badgeCountTrunk" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">เลือกแล้ว 0 ข้อ</span>
+            </div>
+            <div id="defectCheckboxesTrunk" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5"></div>
+          </div>
+
+          <!-- 4.3 ส่วนเรือนยอดและกิ่ง (Crown & Branches) -->
+          <div class="bg-white p-2.5 rounded-xl border border-slate-200/90 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>🌿</span>
+                <span>1.3 ส่วนเรือนยอดและกิ่ง (Crown & Branches)</span>
+              </span>
+              <span id="badgeCountCrown" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">เลือกแล้ว 0 ข้อ</span>
+            </div>
+            <div id="defectCheckboxesCrown" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5"></div>
+          </div>
+        </div>
+
+        <!-- หมวด 5: ระดับความเสี่ยงอันตราย (Risk Score 0-4) -->
         <div class="space-y-1.5">
           <label class="block text-xs font-bold text-slate-700">⚠️ ระดับความเสี่ยงอันตราย (Risk Score 0–4) *</label>
           <div class="grid grid-cols-5 gap-1.5" id="riskButtonsGroup">
@@ -484,33 +531,33 @@
           </div>
         </div>
 
-        <!-- หมวด 5: เป้าหมายที่อาจได้รับผลกระทบ (เลือกคะแนนแยกอิสระครบ 3 หัวข้อย่อย) -->
+        <!-- หมวด 6: เป้าหมายที่อาจได้รับผลกระทบ (เลือกคะแนนแยกอิสระครบ 3 หัวข้อย่อย) -->
         <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold text-slate-800">🎯 เป้าหมายที่อาจได้รับผลกระทบ (คะแนน 0–4 แยกอิสระ)</span>
             <span class="text-[11px] text-slate-500">เลือกได้ครบทุกประเภท</span>
           </div>
 
-          <!-- 5.1 มนุษย์ (Human) -->
+          <!-- 6.1 มนุษย์ (Human) -->
           <div class="space-y-1">
             <div class="text-xs font-semibold text-slate-700">🚶 มนุษย์ (Human)</div>
             <div id="targetGroupHuman" class="grid grid-cols-6 gap-1"></div>
           </div>
 
-          <!-- 5.2 ยานพาหนะ (Vehicle) -->
+          <!-- 6.2 ยานพาหนะ (Vehicle) -->
           <div class="space-y-1">
             <div class="text-xs font-semibold text-slate-700">🚗 ยานพาหนะ (Vehicle)</div>
             <div id="targetGroupVehicle" class="grid grid-cols-6 gap-1"></div>
           </div>
 
-          <!-- 5.3 ทรัพย์สิน/อาคาร (Property) -->
+          <!-- 6.3 ทรัพย์สิน/อาคาร (Property) -->
           <div class="space-y-1">
             <div class="text-xs font-semibold text-slate-700">🏛️ ทรัพย์สิน/อาคาร (Property)</div>
             <div id="targetGroupProperty" class="grid grid-cols-6 gap-1"></div>
           </div>
         </div>
 
-        <!-- หมวด 6: อัตราการเข้าใช้พื้นที่ (Occupancy Rating 1-4) & แนวทางจัดการ -->
+        <!-- หมวด 7: อัตราการเข้าใช้พื้นที่ (Occupancy Rating 1-4) & แนวทางจัดการ -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">👥 อัตราการเข้าใช้พื้นที่ (Occupancy 1–4)</label>
@@ -533,10 +580,10 @@
           </div>
         </div>
 
-        <!-- หมวด 7: หมายเหตุอาการภาคสนาม & แนบรูปถ่ายพร้อมบีบอัดอัตโนมัติ -->
+        <!-- หมวด 8: หมายเหตุอาการภาคสนาม & แนบรูปถ่ายพร้อมบีบอัดอัตโนมัติ -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">📝 หมายเหตุ / อาการผิดปกติที่พบ</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">📝 หมายเหตุ / อาการผิดปกติเพิ่มเติม</label>
             <textarea id="formNotes" rows="3" placeholder="เช่น พบโพรงโคนต้นด้านทิศเหนือ, กิ่งแห้งค้างทรงพุ่ม, รากโผล่..." class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
           </div>
 
@@ -572,7 +619,7 @@
   <div id="cloudModal" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
     <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
       <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
-        <h3 class="text-sm sm:text-base font-bold flex items-center gap-2"><span>⚙️</span> ตั้งค่าฐานข้อมูลทีม (Google Cloud Sync) <span class="text-xs font-mono text-emerald-300">(v4.1)</span></h3>
+        <h3 class="text-sm sm:text-base font-bold flex items-center gap-2"><span>⚙️</span> ตั้งค่าฐานข้อมูลทีม (Google Cloud Sync) <span class="text-xs font-mono text-emerald-300">(v4.2)</span></h3>
         <button type="button" onclick="closeCloudModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">✕</button>
       </div>
 
@@ -732,10 +779,10 @@
   <!-- ==================== JAVASCRIPT LOGIC ==================== -->
   <script>
     /**
-     * 1. ค่าคงที่และ URL เริ่มต้นของฐานข้อมูล Google Apps Script
+     * 1. ค่าคงที่และ URL เริ่มต้นของฐานข้อมูล Google Apps Script (v4.2)
      */
     const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzadOoa0gE7sNqypQuM16CUJVhcgo2dLhwh_UcL2Ups4EBuzlPCILvCX0f_wsSMvnGA/exec";
-    const SCRIPT_URL_VERSION = "v4.1_AKfycbzadOoa0";
+    const SCRIPT_URL_VERSION = "v4_2_AKfycbzadOoa0";
     const AUTO_SYNC_INTERVAL_MS = 10000; // อัปเดตอัตโนมัติทุก 10 วินาที
 
     const STORAGE_KEYS = {
@@ -746,6 +793,37 @@
       SCRIPT_URL: "arborist_cloud_url_v2",
       SCRIPT_VER: "arborist_cloud_ver_v2",
       SYNC_QUEUE: "arborist_sync_queue_v2"
+    };
+
+    /**
+     * รายการประเมินจุดบกพร่อง / ความผิดปกติของต้นไม้ 3 ส่วน (ติ๊กเลือกได้อิสระ 100% ไม่จำกัดข้อ)
+     */
+    const DEFECT_OPTIONS = {
+      root: [
+        "ดินอัดแน่น",
+        "รากโผล่ / รากถูกตัดขาด",
+        "รากเน่า / พบเห็ดราที่โคนต้น",
+        "รากพันรัดลำต้น",
+        "ต้นเอน / ดินบริเวณโคนยกตัว",
+        "พื้นที่จำกัด / เทปูนปิดโคนต้น"
+      ],
+      trunk: [
+        "โพรง / เนื้อไม้ผุ",
+        "รอยแตกแนวยาว / เปลือกแยก",
+        "เปลือกเปิด / แผลขนาดใหญ่",
+        "ลำต้นคอด / กิ่งร่วมแบบ V-shape",
+        "ปลวก / มด / แมลงเจาะลำต้น",
+        "เถาวัลย์ / กาฝากปกคลุม",
+        "ลำต้นเอียงผิดปกติ"
+      ],
+      crown: [
+        "กิ่งแห้งตาย / กิ่งค้าง",
+        "กิ่งฉีกหัก / ห้อยแขวน",
+        "ทรงพุ่มไม่สมดุล / หนักข้างเดียว",
+        "ใบเหลือง / ใบร่วงผิดปกติ",
+        "กิ่งพาดสายไฟ / สิ่งปลูกสร้าง",
+        "โรคพืช / แมลงศัตรูใบ"
+      ]
     };
 
     const RISK_CONFIG = {
@@ -822,10 +900,24 @@
     }
 
     /**
+     * แปลงค่าจุดบกพร่องให้เป็น Array ของข้อความเสมอ ไม่ว่าจะมาจาก LocalStorage หรือ Google Sheets (comma-separated string)
+     */
+    function normalizeDefectList(val) {
+      if (Array.isArray(val)) {
+        return val.map(v => String(v ?? "").trim()).filter(Boolean);
+      }
+      if (typeof val === "string") {
+        return val.split(",").map(v => v.trim()).filter(Boolean);
+      }
+      return [];
+    }
+
+    /**
      * 4. เริ่มต้นระบบเมื่อโหลดหน้าเว็บเสร็จสมบูรณ์
      */
     window.addEventListener("DOMContentLoaded", () => {
       initStorageAndMigration();
+      initDefectCheckboxes();
       initTargetSelectorButtons();
       renderBackendCodePreview();
       initLeafletMap();
@@ -864,9 +956,17 @@
           appState.activeFolderId = appState.folders[0].id;
         }
 
-        // โหลดข้อมูลต้นไม้
+        // โหลดข้อมูลต้นไม้พร้อมปรับโครงสร้างฟิลด์จุดบกพร่องให้เป็น Array มาตรฐาน
         const rawTrees = localStorage.getItem(STORAGE_KEYS.TREES);
-        appState.trees = rawTrees ? JSON.parse(rawTrees) : [];
+        const parsedTrees = rawTrees ? JSON.parse(rawTrees) : [];
+        appState.trees = Array.isArray(parsedTrees)
+          ? parsedTrees.map(t => ({
+              ...t,
+              defectsRoot: normalizeDefectList(t.defectsRoot),
+              defectsTrunk: normalizeDefectList(t.defectsTrunk),
+              defectsCrown: normalizeDefectList(t.defectsCrown)
+            }))
+          : [];
 
         // โหลดชื่อผู้สำรวจ
         appState.surveyorName = localStorage.getItem(STORAGE_KEYS.SURVEYOR) || "";
@@ -1297,7 +1397,7 @@
         });
         marker._treeId = tree.id;
 
-        marker.bindPopup(() => buildTreePopupHTML(tree), { maxWidth: 290, autoPan: false });
+        marker.bindPopup(() => buildTreePopupHTML(tree), { maxWidth: 300, autoPan: false });
         marker.addTo(markersLayerGroup);
         markerRegistry[tree.id] = marker;
       });
@@ -1315,6 +1415,24 @@
         const el = document.getElementById(`legendCount${i}`);
         if (el) el.textContent = `${riskCounts[i]} ต้น`;
       }
+    }
+
+    function buildDefectsSummaryHtml(tree) {
+      const dRoot = normalizeDefectList(tree.defectsRoot);
+      const dTrunk = normalizeDefectList(tree.defectsTrunk);
+      const dCrown = normalizeDefectList(tree.defectsCrown);
+      const total = dRoot.length + dTrunk.length + dCrown.length;
+
+      if (total === 0) {
+        return `<div class="text-[11px] text-emerald-700 bg-emerald-50/70 border border-emerald-100 px-2 py-1 rounded-lg">🩺 จุดบกพร่อง: ไม่พบความผิดปกติ</div>`;
+      }
+
+      const lines = [];
+      if (dRoot.length > 0) lines.push(`<div><b>🌱 ราก:</b> ${escapeHtml(dRoot.join(", "))}</div>`);
+      if (dTrunk.length > 0) lines.push(`<div><b>🪵 ลำต้น:</b> ${escapeHtml(dTrunk.join(", "))}</div>`);
+      if (dCrown.length > 0) lines.push(`<div><b>🌿 เรือนยอด:</b> ${escapeHtml(dCrown.join(", "))}</div>`);
+
+      return `<div class="text-[11px] text-slate-700 bg-rose-50/70 border border-rose-100 px-2 py-1.5 rounded-lg space-y-0.5 leading-snug">${lines.join("")}</div>`;
     }
 
     function buildTreePopupHTML(tree) {
@@ -1336,7 +1454,7 @@
           <div class="px-3 py-2 text-white flex items-center justify-between" style="background-color:${cfg.color};">
             <span class="font-bold text-xs tracking-wide">#${escapeHtml(tree.code)} • ${escapeHtml(tree.species)}</span>
           </div>
-          <div class="p-3 space-y-1.5 text-xs">
+          <div class="p-3 space-y-1.5 text-xs max-h-[62vh] overflow-y-auto">
             <div class="flex items-center justify-between">
               <span class="font-bold px-2 py-0.5 rounded-lg text-[11px] bg-slate-100">เสี่ยงระดับ ${risk} (${cfg.label})</span>
               <span class="text-[11px] text-slate-500">👤 ${escapeHtml(tree.surveyor || "ไม่ระบุ")}</span>
@@ -1350,6 +1468,7 @@
               <div>สูง: <b>${tree.height || "-"}</b> ม.</div>
               <div>ทรงพุ่ม: <b>${tree.canopy || "-"}</b> ม.</div>
             </div>
+            ${buildDefectsSummaryHtml(tree)}
             <div class="text-[11px] bg-amber-50/80 border border-amber-100 px-2 py-1 rounded-lg text-slate-700">
               🎯 เป้าหมาย: <b>H:${tH}</b> | <b>V:${tV}</b> | <b>P:${tP}</b>
             </div>
@@ -1450,8 +1569,61 @@
     }
 
     /**
-     * 9. แบบฟอร์มบันทึก/แก้ไขข้อมูลต้นไม้ & การคำนวณ GBH/DBH และ UTM
+     * 9. แบบฟอร์มบันทึก/แก้ไขข้อมูลต้นไม้, Checkbox จุดบกพร่อง 3 ส่วน และการคำนวณ GBH/DBH และ UTM
      */
+    function initDefectCheckboxes() {
+      const sections = [
+        { key: "root", containerId: "defectCheckboxesRoot" },
+        { key: "trunk", containerId: "defectCheckboxesTrunk" },
+        { key: "crown", containerId: "defectCheckboxesCrown" }
+      ];
+
+      sections.forEach(sec => {
+        const container = document.getElementById(sec.containerId);
+        if (!container) return;
+        container.innerHTML = DEFECT_OPTIONS[sec.key].map((label, idx) => {
+          const inputId = `chk_defect_${sec.key}_${idx}`;
+          return `
+            <label for="${inputId}" class="flex items-center gap-2 px-2.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-emerald-50/60 cursor-pointer transition select-none has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-500 has-[:checked]:text-emerald-950">
+              <input type="checkbox" id="${inputId}" name="defect_${sec.key}" value="${escapeHtml(label)}" onchange="updateDefectCountsUI()" class="w-4 h-4 rounded accent-emerald-600 cursor-pointer shrink-0" />
+              <span class="text-xs font-medium leading-tight">${escapeHtml(label)}</span>
+            </label>
+          `;
+        }).join("");
+      });
+    }
+
+    function setCheckedDefects(sectionKey, selectedValues) {
+      const normalized = new Set(normalizeDefectList(selectedValues));
+      document.querySelectorAll(`input[name="defect_${sectionKey}"]`).forEach(cb => {
+        cb.checked = normalized.has(cb.value);
+      });
+      updateDefectCountsUI();
+    }
+
+    function getCheckedDefects(sectionKey) {
+      return Array.from(document.querySelectorAll(`input[name="defect_${sectionKey}"]:checked`)).map(cb => cb.value);
+    }
+
+    function updateDefectCountsUI() {
+      const mapBadges = [
+        { key: "root", badgeId: "badgeCountRoot" },
+        { key: "trunk", badgeId: "badgeCountTrunk" },
+        { key: "crown", badgeId: "badgeCountCrown" }
+      ];
+      mapBadges.forEach(item => {
+        const count = getCheckedDefects(item.key).length;
+        const badge = document.getElementById(item.badgeId);
+        if (!badge) return;
+        badge.textContent = `เลือกแล้ว ${count} ข้อ`;
+        if (count > 0) {
+          badge.className = "px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-bold";
+        } else {
+          badge.className = "px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold";
+        }
+      });
+    }
+
     function initTargetSelectorButtons() {
       const groups = [
         { id: "targetGroupHuman", key: "targetHuman" },
@@ -1552,6 +1724,11 @@
       document.getElementById("formAction").selectedIndex = 0;
       document.getElementById("formNotes").value = "";
 
+      // รีเซ็ต Checkbox จุดบกพร่องทั้ง 3 ส่วน
+      setCheckedDefects("root", []);
+      setCheckedDefects("trunk", []);
+      setCheckedDefects("crown", []);
+
       selectRiskScore(0);
       appState.targetHuman = null;
       appState.targetVehicle = null;
@@ -1586,6 +1763,11 @@
       document.getElementById("formOccupancy").value = String(tree.occupancy || 2);
       document.getElementById("formAction").value = tree.action || "เฝ้าระวังตามรอบปกติ (6-12 เดือน)";
       document.getElementById("formNotes").value = tree.notes || "";
+
+      // โหลดค่า Checkbox จุดบกพร่องทั้ง 3 ส่วนที่เคยบันทึกไว้
+      setCheckedDefects("root", tree.defectsRoot);
+      setCheckedDefects("trunk", tree.defectsTrunk);
+      setCheckedDefects("crown", tree.defectsCrown);
 
       selectRiskScore(tree.riskScore ?? 0);
       appState.targetHuman = tree.targetHuman !== "" ? (tree.targetHuman ?? null) : null;
@@ -1712,6 +1894,9 @@
         dbh: document.getElementById("formDbh").value || "",
         height: document.getElementById("formHeight").value || "",
         canopy: document.getElementById("formCanopy").value || "",
+        defectsRoot: getCheckedDefects("root"),
+        defectsTrunk: getCheckedDefects("trunk"),
+        defectsCrown: getCheckedDefects("crown"),
         riskScore: appState.selectedRisk,
         targetHuman: appState.targetHuman,
         targetVehicle: appState.targetVehicle,
@@ -2039,12 +2224,21 @@
         trees = trees.filter(t => String(t.riskScore ?? 0) === riskFilter);
       }
       if (search) {
-        trees = trees.filter(t =>
-          String(t.code).toLowerCase().includes(search) ||
-          String(t.species).toLowerCase().includes(search) ||
-          String(t.surveyor || "").toLowerCase().includes(search) ||
-          String(t.notes || "").toLowerCase().includes(search)
-        );
+        trees = trees.filter(t => {
+          const defectsJoined = [
+            ...normalizeDefectList(t.defectsRoot),
+            ...normalizeDefectList(t.defectsTrunk),
+            ...normalizeDefectList(t.defectsCrown)
+          ].join(" ").toLowerCase();
+
+          return (
+            String(t.code).toLowerCase().includes(search) ||
+            String(t.species).toLowerCase().includes(search) ||
+            String(t.surveyor || "").toLowerCase().includes(search) ||
+            String(t.notes || "").toLowerCase().includes(search) ||
+            defectsJoined.includes(search)
+          );
+        });
       }
 
       if (trees.length === 0) {
@@ -2084,6 +2278,7 @@
                   <div><div class="text-[10px] text-slate-400">สูง (ม.)</div><div class="font-bold">${tree.height || "-"}</div></div>
                   <div><div class="text-[10px] text-slate-400">พุ่ม (ม.)</div><div class="font-bold">${tree.canopy || "-"}</div></div>
                 </div>
+                ${buildDefectsSummaryHtml(tree)}
                 <div class="text-[11px] text-slate-700">
                   🎯 เป้าหมาย: <b>H:${tH}</b> | <b>V:${tV}</b> | <b>P:${tP}</b> • เข้าใช้พื้นที่: <b>ระดับ ${tree.occupancy || 2}</b>
                 </div>
@@ -2122,7 +2317,6 @@
      * 12. ระบบซิงก์ข้อมูลทีมอัตโนมัติทุก 10 วินาที (Sequential 10s Sync + Auto Push Offline Records + Live Countdown)
      */
     function enqueueSyncAction(type, payload, triggerImmediate = true) {
-      // ป้องกันคิวซ้ำซ้อนสำหรับรายการ id เดียวกัน
       if (payload && payload.id) {
         appState.syncQueue = appState.syncQueue.filter(
           item => !(item.type === type && item.payload && item.payload.id === payload.id)
@@ -2144,17 +2338,14 @@
     }
 
     function startAutoCloudSync() {
-      // ซิงก์ครั้งแรกหลังเปิดหน้าเว็บ 1.2 วินาที
       appState.nextSyncTimestamp = Date.now() + 1200;
       setTimeout(() => runSyncCycle(false), 1200);
 
-      // ตัวจับเวลานับถอยหลังทุก 1 วินาทีบนแถบสถานะ
       if (countdownTickerId) clearInterval(countdownTickerId);
       countdownTickerId = setInterval(() => {
         updateSyncStatusBadge();
       }, 1000);
 
-      // ซิงก์ทันทีเมื่อกลับมาออนไลน์หรือเปิดหน้าจอมือถือขึ้นมาใหม่
       window.addEventListener("online", () => {
         showToast("🌐 กลับมาออนไลน์แล้ว กำลังซิงก์ข้อมูลทีม...", "info");
         triggerImmediateSyncCycle();
@@ -2220,7 +2411,7 @@
           persistLocalState();
         }
 
-        // 2. ดึงข้อมูลล่าสุดของทีมทั้งหมดจาก Google Sheets (CORS-simple GET ไม่มี custom headers)
+        // 2. ดึงข้อมูลล่าสุดของทีมทั้งหมดจาก Google Sheets
         const getUrl = `${appState.scriptUrl}?action=getAll&t=${Date.now()}`;
         const getRes = await fetch(getUrl);
         if (!getRes.ok) throw new Error(`HTTP ${getRes.status}`);
@@ -2241,7 +2432,7 @@
 
         mergeRemoteCloudData(remoteFolders, remoteTrees);
 
-        // 3. ตรวจสอบว่ามีข้อมูลต้นไม้/โฟลเดอร์ในเครื่องที่ยังไม่ถูกส่งขึ้น Google Sheets หรือไม่ -> ส่งขึ้นให้อัตโนมัติ
+        // 3. ตรวจสอบและส่งข้อมูลในเครื่องที่ยังไม่ถูกส่งขึ้น Google Sheets อัตโนมัติ
         const pushedMissing = enqueueMissingLocalRecords(remoteFolders, remoteTrees);
         if (pushedMissing && appState.syncQueue.length > 0) {
           const pushBatch = [...appState.syncQueue];
@@ -2283,9 +2474,6 @@
       }
     }
 
-    /**
-     * ตรวจหาข้อมูลต้นไม้หรือโฟลเดอร์ในเครื่อง (เช่น ข้อมูลที่เก็บไว้บนมือถือ) ที่ยังไม่มีบน Google Sheets แล้วเพิ่มเข้าคิวส่งอัตโนมัติ
-     */
     function enqueueMissingLocalRecords(remoteFolders, remoteTrees) {
       const remoteFolderIds = new Set(remoteFolders.map(f => String(f.id)));
       const remoteTreeIds = new Set(remoteTrees.map(t => String(t.id)));
@@ -2325,7 +2513,6 @@
     function mergeRemoteCloudData(remoteFolders, remoteTrees) {
       let hasChanged = false;
 
-      // ผสานข้อมูลโฟลเดอร์
       remoteFolders.forEach(rf => {
         if (!rf || !rf.id) return;
         const localIdx = appState.folders.findIndex(f => String(f.id) === String(rf.id));
@@ -2338,7 +2525,6 @@
         }
       });
 
-      // ผสานข้อมูลต้นไม้ (ยึดตาม updatedAt ล่าสุด)
       remoteTrees.forEach(rt => {
         if (!rt || !rt.id) return;
         const normalizedRemote = {
@@ -2346,6 +2532,9 @@
           lat: Number(rt.lat),
           lng: Number(rt.lng),
           riskScore: Number(rt.riskScore ?? 0),
+          defectsRoot: normalizeDefectList(rt.defectsRoot),
+          defectsTrunk: normalizeDefectList(rt.defectsTrunk),
+          defectsCrown: normalizeDefectList(rt.defectsCrown),
           deleted: rt.deleted === true || rt.deleted === "true"
         };
         if (isNaN(normalizedRemote.lat) || isNaN(normalizedRemote.lng)) return;
@@ -2460,14 +2649,17 @@
     }
 
     function renderBackendCodePreview() {
-      const code = `function doGet(e) {
+      const code = `var TREE_HEADERS_V42 = [
+  "id","folderId","code","species","lat","lng","utmZone","utmEasting","utmNorthing",
+  "gbh","dbh","height","canopy","defectsRoot","defectsTrunk","defectsCrown",
+  "riskScore","targetHuman","targetVehicle","targetProperty",
+  "occupancy","action","notes","surveyor","updatedAt","deleted"
+];
+
+function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var fSheet = getOrCreateSheet_(ss, "Folders", ["id", "name", "updatedAt"]);
-  var tSheet = getOrCreateSheet_(ss, "Trees", [
-    "id","folderId","code","species","lat","lng","utmZone","utmEasting","utmNorthing",
-    "gbh","dbh","height","canopy","riskScore","targetHuman","targetVehicle","targetProperty",
-    "occupancy","action","notes","surveyor","updatedAt","deleted"
-  ]);
+  var tSheet = getOrCreateSheet_(ss, "Trees", TREE_HEADERS_V42);
   return jsonResponse_({
     ok: true,
     status: "connected",
@@ -2484,11 +2676,7 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var fSheet = getOrCreateSheet_(ss, "Folders", ["id", "name", "updatedAt"]);
-    var tSheet = getOrCreateSheet_(ss, "Trees", [
-      "id","folderId","code","species","lat","lng","utmZone","utmEasting","utmNorthing",
-      "gbh","dbh","height","canopy","riskScore","targetHuman","targetVehicle","targetProperty",
-      "occupancy","action","notes","surveyor","updatedAt","deleted"
-    ]);
+    var tSheet = getOrCreateSheet_(ss, "Trees", TREE_HEADERS_V42);
     var items = body.items || [];
     items.forEach(function(item) {
       if (item.type === "upsertFolder") upsertRow_(fSheet, item.payload);
@@ -2506,7 +2694,16 @@ function getOrCreateSheet_(ss, name, headers) {
   if (!sheet) {
     sheet = ss.insertSheet(name);
     sheet.appendRow(headers);
+    return sheet;
   }
+  var lastCol = sheet.getLastColumn();
+  var existingHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  headers.forEach(function(h) {
+    if (existingHeaders.indexOf(h) === -1) {
+      existingHeaders.push(h);
+      sheet.getRange(1, existingHeaders.length).setValue(h);
+    }
+  });
   return sheet;
 }
 
@@ -2540,7 +2737,9 @@ function upsertRow_(sheet, obj) {
     }
   }
   var rowData = headers.map(function(h) {
-    return obj[h] !== undefined && obj[h] !== null ? obj[h] : (rowIdx > 0 ? values[rowIdx - 1][headers.indexOf(h)] : "");
+    var val = obj[h];
+    if (Array.isArray(val)) return val.join(", ");
+    return val !== undefined && val !== null ? val : (rowIdx > 0 ? values[rowIdx - 1][headers.indexOf(h)] : "");
   });
   if (rowIdx > 0) {
     sheet.getRange(rowIdx, 1, 1, headers.length).setValues([rowData]);
@@ -2589,6 +2788,9 @@ function jsonResponse_(obj) {
         return true;
       }).map(t => ({
         ...t,
+        defectsRoot: normalizeDefectList(t.defectsRoot),
+        defectsTrunk: normalizeDefectList(t.defectsTrunk),
+        defectsCrown: normalizeDefectList(t.defectsCrown),
         folderName: folderMap[t.folderId] || "โครงการสำรวจทั่วไป"
       }));
 
@@ -2604,7 +2806,9 @@ function jsonResponse_(obj) {
       const headers = [
         "โครงการ/โฟลเดอร์", "รหัสต้นไม้", "ชนิดพันธุ์ไม้", "Latitude", "Longitude",
         "UTM_Zone", "UTM_Easting", "UTM_Northing", "GBH_ซม", "DBH_ซม",
-        "ความสูง_ม", "รัศมีทรงพุ่ม_ม", "ระดับความเสี่ยง_0_4",
+        "ความสูง_ม", "รัศมีทรงพุ่ม_ม",
+        "จุดบกพร่อง_ส่วนราก", "จุดบกพร่อง_ส่วนลำต้น", "จุดบกพร่อง_ส่วนเรือนยอด",
+        "ระดับความเสี่ยง_0_4",
         "เป้าหมาย_มนุษย์_H", "เป้าหมาย_ยานพาหนะ_V", "เป้าหมาย_ทรัพย์สิน_P",
         "อัตราเข้าใช้พื้นที่_1_4", "แนวทางจัดการ", "หมายเหตุ", "ผู้สำรวจ", "เวลาอัปเดต", "ชื่อไฟล์รูปถ่าย"
       ];
@@ -2615,7 +2819,9 @@ function jsonResponse_(obj) {
         return [
           t.folderName, t.code, t.species, t.lat, t.lng,
           utm.zone, utm.easting, utm.northing, t.gbh || "", t.dbh || "",
-          t.height || "", t.canopy || "", t.riskScore ?? 0,
+          t.height || "", t.canopy || "",
+          t.defectsRoot.join(", "), t.defectsTrunk.join(", "), t.defectsCrown.join(", "),
+          t.riskScore ?? 0,
           t.targetHuman ?? "", t.targetVehicle ?? "", t.targetProperty ?? "",
           t.occupancy ?? "", t.action || "", t.notes || "", t.surveyor || "", t.updatedAt || "", photoFile
         ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
@@ -2638,6 +2844,9 @@ function jsonResponse_(obj) {
             dbh_cm: t.dbh,
             height_m: t.height,
             canopy_m: t.canopy,
+            defectsRoot: t.defectsRoot,
+            defectsTrunk: t.defectsTrunk,
+            defectsCrown: t.defectsCrown,
             riskScore: t.riskScore,
             targetHuman: t.targetHuman,
             targetVehicle: t.targetVehicle,
@@ -2654,18 +2863,26 @@ function jsonResponse_(obj) {
     }
 
     function buildKmlContent(trees) {
-      const placemarks = trees.map(t => `
+      const placemarks = trees.map(t => {
+        const dRoot = t.defectsRoot.length ? t.defectsRoot.join(", ") : "-";
+        const dTrunk = t.defectsTrunk.length ? t.defectsTrunk.join(", ") : "-";
+        const dCrown = t.defectsCrown.length ? t.defectsCrown.join(", ") : "-";
+        return `
     <Placemark>
       <name>#${escapeXml(t.code)} - ${escapeXml(t.species)}</name>
       <description><![CDATA[
         โครงการ: ${escapeHtml(t.folderName)}<br/>
         ความเสี่ยงระดับ: ${t.riskScore ?? 0}<br/>
         GBH: ${t.gbh || "-"} ซม. | DBH: ${t.dbh || "-"} ซม. | สูง: ${t.height || "-"} ม.<br/>
+        จุดบกพร่อง (ราก): ${escapeHtml(dRoot)}<br/>
+        จุดบกพร่อง (ลำต้น): ${escapeHtml(dTrunk)}<br/>
+        จุดบกพร่อง (เรือนยอด): ${escapeHtml(dCrown)}<br/>
         เป้าหมาย H/V/P: ${t.targetHuman ?? "-"}/${t.targetVehicle ?? "-"}/${t.targetProperty ?? "-"}<br/>
         ผู้สำรวจ: ${escapeHtml(t.surveyor || "-")}
       ]]></description>
       <Point><coordinates>${t.lng},${t.lat},0</coordinates></Point>
-    </Placemark>`).join("");
+    </Placemark>`;
+      }).join("");
 
       return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
